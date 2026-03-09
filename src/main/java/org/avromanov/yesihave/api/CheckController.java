@@ -21,6 +21,6 @@ public class CheckController {
     @PostMapping(value = "/api/check", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MatchResultDto check(@RequestPart("front") MultipartFile front,
                                 @RequestPart("back") MultipartFile back) throws IOException {
-        return checkPairUseCase.check(front.getBytes(), back.getBytes());
+        return checkPairUseCase.check(0L, front.getBytes(), back.getBytes());
     }
 }

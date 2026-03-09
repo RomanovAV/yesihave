@@ -138,7 +138,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
 
         session.setBackImage(bytes);
         if (session.action() == BotAction.CHECK) {
-            MatchResultDto result = checkPairUseCase.check(session.frontImage(), session.backImage());
+            MatchResultDto result = checkPairUseCase.check(chatId, session.frontImage(), session.backImage());
             session.reset();
             telegramApiClient.sendMessage(chatId, formatMatchResult(result));
             return;

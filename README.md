@@ -47,8 +47,10 @@ Current implementation returns a stub `UNCERTAIN` response and a single mock can
   - send `front` photo
   - send `back` photo
   - receive match decision + top candidates
+  - request audit is stored in `check_requests` and `check_candidates`
 - `/add`:
   - send `front` photo
   - send `back` photo
   - send `name`
   - coaster and images are persisted in PostgreSQL + MinIO
+  - deterministic 512-d embedding is computed and stored in `coaster_embeddings`
