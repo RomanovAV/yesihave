@@ -1,20 +1,26 @@
 package org.avromanov.yesihave.image;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 @Service
+@ConditionalOnMissingBean(EmbeddingService.class)
 public class StubEmbeddingService implements EmbeddingService {
-    private static final int DIM = 512;
+    private final int dimension;
+
+    public StubEmbeddingService(EmbeddingProperties properties) {
+        this.dimension = properties.dimension();
+    }
 
     @Override
     public float[] toEmbedding(byte[] image) {
         byte[] digest = sha256(image);
-        float[] vector = new float[DIM];
+        float[] vector = new float[dimension];
 
-        for (int i = 0; i < DIM; i++) {
+        for (int i = 0; i < dimension; i++) {
             int unsigned = digest[i % digest.length] & 0xFF;
             vector[i] = (unsigned / 255.0f) - 0.5f;
         }

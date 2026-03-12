@@ -15,6 +15,10 @@ management:
         include: health,info,metrics
 
 app:
+  embedding:
+    provider: ${APP_EMBEDDING_PROVIDER:deterministic}
+    onnx-model-path: ${APP_ONNX_MODEL_PATH:}
+    dimension: ${APP_EMBEDDING_DIMENSION:512}
   telegram:
     token: ${APP_TELEGRAM_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}

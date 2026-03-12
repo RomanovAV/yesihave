@@ -32,6 +32,16 @@ After startup:
 
 If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
 
+## Embedding providers
+
+By default app uses deterministic provider (`APP_EMBEDDING_PROVIDER=deterministic`) for local/dev runs.
+
+For ONNX provider:
+
+- set `APP_EMBEDDING_PROVIDER=onnx`
+- set `APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx`
+- set `APP_EMBEDDING_DIMENSION` to match model output vector size
+
 ## API stub
 
 `POST /api/check` with `multipart/form-data`:
