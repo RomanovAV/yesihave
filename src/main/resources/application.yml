@@ -18,7 +18,10 @@ app:
   embedding:
     provider: ${APP_EMBEDDING_PROVIDER:deterministic}
     onnx-model-path: ${APP_ONNX_MODEL_PATH:}
+    onnx-input-name: ${APP_ONNX_INPUT_NAME:}
+    onnx-output-name: ${APP_ONNX_OUTPUT_NAME:}
     dimension: ${APP_EMBEDDING_DIMENSION:512}
+    model-version: ${APP_EMBEDDING_MODEL_VERSION:deterministic-v1}
   telegram:
     token: ${APP_TELEGRAM_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}

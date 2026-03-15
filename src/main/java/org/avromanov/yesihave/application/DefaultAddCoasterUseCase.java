@@ -1,5 +1,6 @@
 package org.avromanov.yesihave.application;
 
+import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.persistence.CoasterWriteRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
@@ -14,21 +15,22 @@ import java.util.UUID;
 
 @Service
 public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
-    private static final String MODEL_VERSION = "deterministic-v1";
-
     private final ObjectStorageService objectStorageService;
     private final CoasterWriteRepository coasterWriteRepository;
     private final MatchingRepository matchingRepository;
     private final EmbeddingService embeddingService;
+    private final EmbeddingProperties embeddingProperties;
 
     public DefaultAddCoasterUseCase(ObjectStorageService objectStorageService,
                                     CoasterWriteRepository coasterWriteRepository,
                                     MatchingRepository matchingRepository,
-                                    EmbeddingService embeddingService) {
+                                    EmbeddingService embeddingService,
+                                    EmbeddingProperties embeddingProperties) {
         this.objectStorageService = objectStorageService;
         this.coasterWriteRepository = coasterWriteRepository;
         this.matchingRepository = matchingRepository;
         this.embeddingService = embeddingService;
+        this.embeddingProperties = embeddingProperties;
     }
 
     @Override
@@ -57,7 +59,12 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
 
         float[] frontEmbedding = embeddingService.toEmbedding(frontImage);
         float[] backEmbedding = embeddingService.toEmbedding(backImage);
-        matchingRepository.upsertEmbedding(coasterId, MODEL_VERSION, frontEmbedding, backEmbedding);
+        matchingRepository.upsertEmbedding(
+                coasterId,
+                embeddingProperties.modelVersion(),
+                frontEmbedding,
+                backEmbedding
+        );
 
         return coasterId;
     }

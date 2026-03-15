@@ -6,6 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record EmbeddingProperties(
         String provider,
         String onnxModelPath,
-        int dimension
+        String onnxInputName,
+        String onnxOutputName,
+        int dimension,
+        String modelVersion
 ) {
 }

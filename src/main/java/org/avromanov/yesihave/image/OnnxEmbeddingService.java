@@ -24,17 +24,22 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private final OrtEnvironment environment;
     private final OrtSession session;
     private final String inputName;
+    private final String outputName;
     private final int dimension;
 
     public OnnxEmbeddingService(EmbeddingProperties properties) {
         if (properties.onnxModelPath() == null || properties.onnxModelPath().isBlank()) {
             throw new IllegalStateException("app.embedding.onnx-model-path must be set for ONNX provider");
         }
+        if (properties.dimension() <= 0) {
+            throw new IllegalStateException("app.embedding.dimension must be > 0");
+        }
         this.dimension = properties.dimension();
         try {
             this.environment = OrtEnvironment.getEnvironment();
             this.session = environment.createSession(properties.onnxModelPath(), new OrtSession.SessionOptions());
-            this.inputName = session.getInputNames().iterator().next();
+            this.inputName = resolveInputName(properties);
+            this.outputName = resolveOutputName(properties);
         } catch (OrtException e) {
             throw new IllegalStateException("Failed to initialize ONNX runtime", e);
         }
@@ -56,7 +61,9 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
             try (OnnxTensor tensor = OnnxTensor.createTensor(environment, input);
                  OrtSession.Result result = session.run(Map.of(inputName, tensor))) {
-                Object value = result.get(0).getValue();
+                Object value = outputName == null
+                        ? result.get(0).getValue()
+                        : result.get(outputName).get().getValue();
                 float[] embedding = extractEmbedding(value);
                 return normalize(embedding);
             }
@@ -99,6 +106,9 @@ public class OnnxEmbeddingService implements EmbeddingService {
         if (value instanceof float[][] batch && batch.length > 0) {
             return toFixedDim(batch[0], dimension);
         }
+        if (value instanceof float[] vector) {
+            return toFixedDim(vector, dimension);
+        }
         if (value instanceof FloatBuffer floatBuffer) {
             float[] data = new float[floatBuffer.remaining()];
             floatBuffer.get(data);
@@ -130,5 +140,19 @@ public class OnnxEmbeddingService implements EmbeddingService {
             vector[i] = (float) (vector[i] / norm);
         }
         return vector;
+    }
+
+    private String resolveInputName(EmbeddingProperties properties) {
+        if (properties.onnxInputName() != null && !properties.onnxInputName().isBlank()) {
+            return properties.onnxInputName();
+        }
+        return session.getInputNames().iterator().next();
+    }
+
+    private String resolveOutputName(EmbeddingProperties properties) {
+        if (properties.onnxOutputName() != null && !properties.onnxOutputName().isBlank()) {
+            return properties.onnxOutputName();
+        }
+        return session.getOutputNames().size() == 1 ? session.getOutputNames().iterator().next() : null;
     }
 }

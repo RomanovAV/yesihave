@@ -41,6 +41,17 @@ For ONNX provider:
 - set `APP_EMBEDDING_PROVIDER=onnx`
 - set `APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx`
 - set `APP_EMBEDDING_DIMENSION` to match model output vector size
+- optionally set `APP_ONNX_INPUT_NAME` / `APP_ONNX_OUTPUT_NAME` if model uses non-default names
+
+## Reindex embeddings (script)
+
+```bash
+APP_EMBEDDING_PROVIDER=onnx \
+APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx \
+APP_EMBEDDING_DIMENSION=512 \
+APP_EMBEDDING_MODEL_VERSION=clip-v1 \
+./scripts/reindex-embeddings.sh
+```
 
 ## API stub
 

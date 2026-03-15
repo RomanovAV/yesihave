@@ -4,10 +4,13 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.GetObjectArgs;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.UUID;
 
 @Service
@@ -51,6 +54,20 @@ public class MinioObjectStorageService implements ObjectStorageService {
             return objectKey;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to upload image to MinIO", e);
+        }
+    }
+
+    @Override
+    public byte[] getBytes(String objectKey) {
+        try (InputStream inputStream = minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(properties.bucket())
+                        .object(objectKey)
+                        .build()
+        )) {
+            return inputStream.readAllBytes();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to read image from MinIO", e);
         }
     }
 }
