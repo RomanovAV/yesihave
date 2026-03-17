@@ -32,6 +32,18 @@ After startup:
 
 If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
 
+## Convenience targets
+
+```bash
+make up
+make down
+make logs
+make test
+make test-integration
+make reindex
+make export-model
+```
+
 ## Embedding providers
 
 By default app uses deterministic provider (`APP_EMBEDDING_PROVIDER=deterministic`) for local/dev runs.
@@ -43,6 +55,25 @@ For ONNX provider:
 - set `APP_EMBEDDING_DIMENSION` to match model output vector size
 - optionally set `APP_ONNX_INPUT_NAME` / `APP_ONNX_OUTPUT_NAME` if model uses non-default names
 
+## Export CLIP ViT-B/32 to ONNX
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/export-clip-onnx.py --output models/clip-vitb32.onnx
+```
+
+Then run with:
+
+```bash
+APP_EMBEDDING_PROVIDER=onnx \
+APP_ONNX_MODEL_PATH=/absolute/path/to/repo/models/clip-vitb32.onnx \
+APP_ONNX_INPUT_NAME=image \
+APP_ONNX_OUTPUT_NAME=embedding \
+APP_EMBEDDING_DIMENSION=512
+```
+
 ## Reindex embeddings (script)
 
 ```bash
@@ -52,6 +83,8 @@ APP_EMBEDDING_DIMENSION=512 \
 APP_EMBEDDING_MODEL_VERSION=clip-v1 \
 ./scripts/reindex-embeddings.sh
 ```
+
+The reindex script skips entries that already have the same `model_version`.
 
 ## API stub
 

@@ -1,0 +1,4 @@
+torch>=2.2.0
+torchvision>=0.17.0
+open_clip_torch>=2.24.0
+onnx>=1.16.0

@@ -32,7 +32,8 @@ public class ReindexEmbeddingsService {
 
     @Transactional
     public int reindexAll() {
-        List<CoasterReadRepository.CoasterImagePair> pairs = coasterReadRepository.findAllPairs();
+        List<CoasterReadRepository.CoasterImagePair> pairs =
+                coasterReadRepository.findPairsNeedingReindex(embeddingProperties.modelVersion());
         int processed = 0;
         for (CoasterReadRepository.CoasterImagePair pair : pairs) {
             byte[] frontBytes = objectStorageService.getBytes(pair.frontKey());

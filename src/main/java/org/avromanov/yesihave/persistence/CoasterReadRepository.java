@@ -32,6 +32,27 @@ public class CoasterReadRepository {
         );
     }
 
+    public List<CoasterImagePair> findPairsNeedingReindex(String modelVersion) {
+        return jdbcTemplate.query(
+                """
+                SELECT c.id,
+                       f.object_key AS front_key,
+                       b.object_key AS back_key
+                FROM coasters c
+                JOIN coaster_images f ON f.coaster_id = c.id AND f.side = 'FRONT'
+                JOIN coaster_images b ON b.coaster_id = c.id AND b.side = 'BACK'
+                LEFT JOIN coaster_embeddings ce ON ce.coaster_id = c.id
+                WHERE ce.model_version IS NULL OR ce.model_version <> ?
+                """,
+                (rs, rowNum) -> new CoasterImagePair(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("front_key"),
+                        rs.getString("back_key")
+                ),
+                modelVersion
+        );
+    }
+
     public record CoasterImagePair(UUID coasterId, String frontKey, String backKey) {
     }
 }
