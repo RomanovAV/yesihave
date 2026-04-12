@@ -25,6 +25,8 @@ MVP skeleton for a Java Telegram bot that checks whether a coaster is already in
 docker compose up --build
 ```
 
+Requires Docker Desktop (or an equivalent Docker engine with Compose support).
+
 After startup:
 
 - App health: `http://localhost:8080/actuator/health`
@@ -68,11 +70,13 @@ Then run with:
 
 ```bash
 APP_EMBEDDING_PROVIDER=onnx \
-APP_ONNX_MODEL_PATH=/absolute/path/to/repo/models/clip-vitb32.onnx \
+APP_ONNX_MODEL_PATH=/app/models/clip-vitb32.onnx \
 APP_ONNX_INPUT_NAME=image \
 APP_ONNX_OUTPUT_NAME=embedding \
 APP_EMBEDDING_DIMENSION=512
 ```
+
+When running in Docker Compose, `./models` is mounted to `/app/models` in the app container.
 
 ## Reindex embeddings (script)
 

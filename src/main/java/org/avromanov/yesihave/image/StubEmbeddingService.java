@@ -1,13 +1,13 @@
 package org.avromanov.yesihave.image;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 @Service
-@ConditionalOnMissingBean(EmbeddingService.class)
+@ConditionalOnProperty(prefix = "app.embedding", name = "provider", havingValue = "deterministic", matchIfMissing = true)
 public class StubEmbeddingService implements EmbeddingService {
     private final int dimension;
 

@@ -1,13 +1,23 @@
-.PHONY: up down logs test test-integration reindex export-model
+.PHONY: up down logs ps infra-up infra-down test test-integration reindex export-model
+COMPOSE := docker compose
 
 up:
-	docker compose up --build
+	$(COMPOSE) up --build
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 logs:
-	docker compose logs -f --tail=200
+	$(COMPOSE) logs -f --tail=200
+
+ps:
+	$(COMPOSE) ps
+
+infra-up:
+	$(COMPOSE) up -d postgres minio minio-init
+
+infra-down:
+	$(COMPOSE) stop postgres minio
 
 test:
 	mvn test
@@ -19,6 +29,6 @@ reindex:
 	./scripts/reindex-embeddings.sh
 
 export-model:
-	python -m venv .venv
+	python3 -m venv .venv
 	. .venv/bin/activate && pip install -r requirements.txt
 	. .venv/bin/activate && python scripts/export-clip-onnx.py --output models/clip-vitb32.onnx
