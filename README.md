@@ -121,6 +121,33 @@ The page includes:
 
 For browser-only mode on server, keep `APP_TELEGRAM_TOKEN` empty.
 
+## Server port hardening (VDS)
+
+By default in this compose setup:
+
+- PostgreSQL (`5432`) is bound to `127.0.0.1` only
+- MinIO API (`9000`) is bound to `127.0.0.1` only
+- MinIO console (`9001`) is bound to `127.0.0.1` only
+- App (`8080`) is public (for browser access)
+
+Check listening ports:
+
+```bash
+ss -tulpen
+docker compose ps
+```
+
+Optional firewall (Ubuntu UFW):
+
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow OpenSSH
+sudo ufw allow 8080/tcp
+sudo ufw enable
+sudo ufw status verbose
+```
+
 ## Telegram flow (implemented)
 
 - `/check`:
