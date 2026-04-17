@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YesIHave UI</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --panel: #ffffff;
+      --ink: #101828;
+      --muted: #475467;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --border: #d0d5dd;
+      --danger: #b42318;
+      --ok: #027a48;
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 10%, #d1fae5 0%, transparent 35%),
+        radial-gradient(circle at 90% 90%, #bae6fd 0%, transparent 30%),
+        var(--bg);
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+      padding: 20px;
+    }
+
+    h1, h2 {
+      margin: 0 0 8px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    form {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    pre {
+      margin: 10px 0 0;
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hero">
+    <h1>YesIHave Web UI</h1>
+    <p>Проверка и добавление бирдекелей через браузер. Telegram для этого режима не нужен.</p>
+    <span class="badge">API: /api/check и /api/add</span>
+  </section>
+
+  <section class="panel">
+    <h2>Проверить пару (front/back)</h2>
+    <form id="checkForm">
+      <label>Front image
+        <input name="front" type="file" accept="image/*" required>
+      </label>
+      <label>Back image
+        <input name="back" type="file" accept="image/*" required>
+      </label>
+      <button type="submit">Проверить</button>
+    </form>
+    <div id="checkStatus" class="status"></div>
+    <pre id="checkResult" hidden></pre>
+  </section>
+
+  <section class="panel">
+    <h2>Добавить новый бирдекель</h2>
+    <form id="addForm">
+      <label>Name
+        <input name="name" type="text" placeholder="Например, Guinness Classic" required>
+      </label>
+      <label>Front image
+        <input name="front" type="file" accept="image/*" required>
+      </label>
+      <label>Back image
+        <input name="back" type="file" accept="image/*" required>
+      </label>
+      <button type="submit">Добавить</button>
+    </form>
+    <div id="addStatus" class="status"></div>
+    <pre id="addResult" hidden></pre>
+  </section>
+</main>
+
+<script>
+  async function submitForm(form, url, statusEl, resultEl) {
+    statusEl.className = "status";
+    statusEl.textContent = "Отправляем...";
+    resultEl.hidden = true;
+    resultEl.textContent = "";
+
+    try {
+      const body = new FormData(form);
+      const response = await fetch(url, { method: "POST", body });
+      const text = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = { raw: text };
+      }
+
+      if (!response.ok) {
+        throw new Error(typeof payload === "object" ? JSON.stringify(payload, null, 2) : text);
+      }
+
+      statusEl.className = "status ok";
+      statusEl.textContent = "Готово";
+      resultEl.hidden = false;
+      resultEl.textContent = JSON.stringify(payload, null, 2);
+    } catch (error) {
+      statusEl.className = "status error";
+      statusEl.textContent = "Ошибка запроса";
+      resultEl.hidden = false;
+      resultEl.textContent = String(error);
+    }
+  }
+
+  document.getElementById("checkForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await submitForm(
+      event.target,
+      "/api/check",
+      document.getElementById("checkStatus"),
+      document.getElementById("checkResult")
+    );
+  });
+
+  document.getElementById("addForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await submitForm(
+      event.target,
+      "/api/add",
+      document.getElementById("addStatus"),
+      document.getElementById("addResult")
+    );
+  });
+</script>
+</body>
+</html>

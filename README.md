@@ -33,6 +33,7 @@ After startup:
 - MinIO console: `http://localhost:9001` (`minioadmin` / `minioadmin`)
 
 If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
+If token is empty, app still starts and web/API mode works without Telegram.
 
 ## Convenience targets
 
@@ -98,6 +99,27 @@ The reindex script skips entries that already have the same `model_version`.
 - `back`: image file
 
 Current implementation returns a stub `UNCERTAIN` response and a single mock candidate.
+
+`POST /api/add` with `multipart/form-data`:
+
+- `name`: coaster name
+- `front`: image file
+- `back`: image file
+
+Returns JSON with created coaster id.
+
+## Web UI (browser mode)
+
+Open:
+
+- `http://localhost:8080/`
+
+The page includes:
+
+- check flow (`/api/check`) by uploading `front` + `back`
+- add flow (`/api/add`) by uploading `name` + `front` + `back`
+
+For browser-only mode on server, keep `APP_TELEGRAM_TOKEN` empty.
 
 ## Telegram flow (implemented)
 
