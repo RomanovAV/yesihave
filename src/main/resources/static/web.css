@@ -1,0 +1,120 @@
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --ink: #101828;
+  --muted: #475467;
+  --accent: #0f766e;
+  --border: #d0d5dd;
+  --danger: #b42318;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 20% 10%, #d1fae5 0%, transparent 35%),
+    radial-gradient(circle at 90% 90%, #bae6fd 0%, transparent 30%),
+    var(--bg);
+  min-height: 100vh;
+  padding: 28px 16px;
+}
+
+.wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.hero, .card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+  padding: 20px;
+}
+
+h1, h2, h3 { margin: 0 0 10px; }
+p { margin: 0; }
+
+.muted { color: var(--muted); }
+.error { color: var(--danger); font-weight: 600; }
+
+form {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+label { font-size: 14px; color: var(--muted); }
+
+input[type="text"], input[type="file"] {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+button, .btn {
+  display: inline-block;
+  text-decoration: none;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.btn.secondary {
+  background: #334155;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.nav { margin-top: 14px; }
+
+.kv {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.kv > div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.k { color: var(--muted); }
+.v { overflow-wrap: anywhere; }
+
+.list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+}
+
+code {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+

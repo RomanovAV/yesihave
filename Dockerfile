@@ -5,8 +5,14 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn -q -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      libheif-examples \
+      imagemagick \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/target/*.jar /app/app.jar
 EXPOSE 8080
