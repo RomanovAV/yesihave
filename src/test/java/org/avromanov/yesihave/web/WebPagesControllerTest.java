@@ -5,6 +5,7 @@ import org.avromanov.yesihave.application.CheckPairUseCase;
 import org.avromanov.yesihave.application.model.CandidateDto;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
+import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -38,7 +39,7 @@ class WebPagesControllerTest {
     static class Stubs {
         @Bean
         UploadedImageNormalizer uploadedImageNormalizer() {
-            return new UploadedImageNormalizer() {
+            return new UploadedImageNormalizer(new ImageBytesNormalizer()) {
                 @Override
                 public byte[] normalizeToJpegIfHeic(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
                     return file.getBytes();
