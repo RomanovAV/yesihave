@@ -38,6 +38,14 @@ body {
   padding: 20px;
 }
 
+.subcard {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fffd 0%, #ffffff 100%);
+}
+
 h1, h2, h3 { margin: 0 0 10px; }
 p { margin: 0; }
 
@@ -117,4 +125,3 @@ code {
   border-radius: 8px;
   font-size: 12px;
 }
-

@@ -69,14 +69,17 @@ make export-model
 
 ## Embedding providers
 
-By default app uses deterministic provider (`APP_EMBEDDING_PROVIDER=deterministic`) for local/dev runs.
+By default app uses ONNX provider (`APP_EMBEDDING_PROVIDER=onnx`) for local/dev runs.
+
+Make sure `APP_ONNX_MODEL_PATH` points to a valid model file. In Docker Compose the default is `/app/models/clip-vitb32.onnx`.
 
 For ONNX provider:
 
-- set `APP_EMBEDDING_PROVIDER=onnx`
 - set `APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx`
 - set `APP_EMBEDDING_DIMENSION` to match model output vector size
 - optionally set `APP_ONNX_INPUT_NAME` / `APP_ONNX_OUTPUT_NAME` if model uses non-default names
+
+To switch back to the deterministic provider explicitly, set `APP_EMBEDDING_PROVIDER=deterministic`.
 
 ## Export CLIP ViT-B/32 to ONNX
 

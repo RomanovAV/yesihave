@@ -20,12 +20,12 @@ management:
 
 app:
   embedding:
-    provider: ${APP_EMBEDDING_PROVIDER:deterministic}
+    provider: ${APP_EMBEDDING_PROVIDER:onnx}
     onnx-model-path: ${APP_ONNX_MODEL_PATH:}
     onnx-input-name: ${APP_ONNX_INPUT_NAME:}
     onnx-output-name: ${APP_ONNX_OUTPUT_NAME:}
     dimension: ${APP_EMBEDDING_DIMENSION:512}
-    model-version: ${APP_EMBEDDING_MODEL_VERSION:deterministic-v1}
+    model-version: ${APP_EMBEDDING_MODEL_VERSION:clip-vitb32-v1}
   matching:
     match-pair-threshold: ${APP_MATCH_PAIR_THRESHOLD:0.90}
     match-min-side-threshold: ${APP_MATCH_MIN_SIDE_THRESHOLD:0.86}
