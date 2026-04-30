@@ -8,8 +8,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -78,11 +76,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
             throw new IllegalArgumentException("Unsupported image content");
         }
 
-        BufferedImage resized = new BufferedImage(INPUT_SIZE, INPUT_SIZE, BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = resized.createGraphics();
-        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        graphics.drawImage(original, 0, 0, INPUT_SIZE, INPUT_SIZE, null);
-        graphics.dispose();
+        BufferedImage resized = ImagePreprocessor.prepareForEmbedding(original, INPUT_SIZE);
 
         float[] output = new float[3 * INPUT_SIZE * INPUT_SIZE];
         int planeSize = INPUT_SIZE * INPUT_SIZE;
