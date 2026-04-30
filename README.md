@@ -119,6 +119,13 @@ make reindex
 
 This runs reindexing in a dedicated Docker Compose service with Maven available inside the container.
 
+`reindex` uses its own environment variables, so it does not conflict with the main app container:
+
+```bash
+APP_REINDEX_ONNX_MODEL_PATH=/workspace/models/clip-vitb32.onnx
+APP_REINDEX_EMBEDDING_MODEL_VERSION=clip-vitb32-v1
+```
+
 For a local run from this repository, use an absolute host path for the model, for example:
 
 ```bash
