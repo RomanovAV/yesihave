@@ -35,6 +35,26 @@ After startup:
 If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
 If token is empty, app still starts and web/API mode works without Telegram.
 
+## Protect web/API with Basic Auth (nginx)
+
+This repository includes an optional nginx reverse-proxy with Basic Auth.
+When enabled, **all** app endpoints require authorization (`/`, `/web/*`, `/api/*`, `/actuator/*`).
+
+1) Create password file (do not commit it):
+
+```bash
+mkdir -p nginx
+docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'CHANGE_ME' > nginx/htpasswd
+```
+
+2) Start:
+
+```bash
+docker compose up -d --build
+```
+
+3) Open `http://<server>:8080/` and use credentials you generated.
+
 ## Convenience targets
 
 ```bash

@@ -39,3 +39,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Nginx basic auth ###
+nginx/htpasswd
