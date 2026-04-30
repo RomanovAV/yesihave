@@ -2,6 +2,7 @@ package org.avromanov.yesihave.application;
 
 import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.EmbeddingService;
+import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CoasterReadRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.storage.ObjectStorageService;
@@ -17,17 +18,20 @@ public class ReindexEmbeddingsService {
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
     private final EmbeddingProperties embeddingProperties;
+    private final ImageBytesNormalizer imageBytesNormalizer;
 
     public ReindexEmbeddingsService(CoasterReadRepository coasterReadRepository,
                                     ObjectStorageService objectStorageService,
                                     EmbeddingService embeddingService,
                                     MatchingRepository matchingRepository,
-                                    EmbeddingProperties embeddingProperties) {
+                                    EmbeddingProperties embeddingProperties,
+                                    ImageBytesNormalizer imageBytesNormalizer) {
         this.coasterReadRepository = coasterReadRepository;
         this.objectStorageService = objectStorageService;
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.embeddingProperties = embeddingProperties;
+        this.imageBytesNormalizer = imageBytesNormalizer;
     }
 
     @Transactional
@@ -36,8 +40,8 @@ public class ReindexEmbeddingsService {
                 coasterReadRepository.findPairsNeedingReindex(embeddingProperties.modelVersion());
         int processed = 0;
         for (CoasterReadRepository.CoasterImagePair pair : pairs) {
-            byte[] frontBytes = objectStorageService.getBytes(pair.frontKey());
-            byte[] backBytes = objectStorageService.getBytes(pair.backKey());
+            byte[] frontBytes = normalize(objectStorageService.getBytes(pair.frontKey()));
+            byte[] backBytes = normalize(objectStorageService.getBytes(pair.backKey()));
 
             float[] frontEmbedding = embeddingService.toEmbedding(frontBytes);
             float[] backEmbedding = embeddingService.toEmbedding(backBytes);
@@ -51,5 +55,13 @@ public class ReindexEmbeddingsService {
             processed++;
         }
         return processed;
+    }
+
+    private byte[] normalize(byte[] image) {
+        try {
+            return imageBytesNormalizer.normalize(image);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to normalize image", e);
+        }
     }
 }

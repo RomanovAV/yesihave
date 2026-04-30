@@ -4,6 +4,7 @@ import org.avromanov.yesihave.application.model.CandidateDto;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.avromanov.yesihave.image.EmbeddingService;
+import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CheckAuditRepository;
 import org.avromanov.yesihave.persistence.MatchedCandidateRow;
 import org.avromanov.yesihave.persistence.MatchingRepository;
@@ -24,22 +25,28 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     private final CheckAuditRepository checkAuditRepository;
     private final ObjectStorageService objectStorageService;
     private final MatchingProperties matchingProperties;
+    private final ImageBytesNormalizer imageBytesNormalizer;
 
     public DefaultCheckPairUseCase(EmbeddingService embeddingService,
                                    MatchingRepository matchingRepository,
                                    CheckAuditRepository checkAuditRepository,
                                    ObjectStorageService objectStorageService,
-                                   MatchingProperties matchingProperties) {
+                                   MatchingProperties matchingProperties,
+                                   ImageBytesNormalizer imageBytesNormalizer) {
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.checkAuditRepository = checkAuditRepository;
         this.objectStorageService = objectStorageService;
         this.matchingProperties = matchingProperties;
+        this.imageBytesNormalizer = imageBytesNormalizer;
     }
 
     @Override
     @Transactional
     public MatchResultDto check(long telegramUserId, byte[] frontImage, byte[] backImage) {
+        frontImage = normalize(frontImage);
+        backImage = normalize(backImage);
+
         float[] frontEmbedding = embeddingService.toEmbedding(frontImage);
         float[] backEmbedding = embeddingService.toEmbedding(backImage);
 
@@ -73,6 +80,14 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
                 matchedCoasterId,
                 rankedCandidates
         );
+    }
+
+    private byte[] normalize(byte[] image) {
+        try {
+            return imageBytesNormalizer.normalize(image);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to normalize image", e);
+        }
     }
 
     private List<MatchedCandidateRow> fetchScoredCandidates(float[] frontEmbedding, float[] backEmbedding) {

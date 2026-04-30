@@ -1,6 +1,7 @@
 package org.avromanov.yesihave.application;
 
 import org.avromanov.yesihave.image.EmbeddingProperties;
+import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.persistence.CoasterWriteRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
@@ -20,22 +21,28 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
     private final MatchingRepository matchingRepository;
     private final EmbeddingService embeddingService;
     private final EmbeddingProperties embeddingProperties;
+    private final ImageBytesNormalizer imageBytesNormalizer;
 
     public DefaultAddCoasterUseCase(ObjectStorageService objectStorageService,
                                     CoasterWriteRepository coasterWriteRepository,
                                     MatchingRepository matchingRepository,
                                     EmbeddingService embeddingService,
-                                    EmbeddingProperties embeddingProperties) {
+                                    EmbeddingProperties embeddingProperties,
+                                    ImageBytesNormalizer imageBytesNormalizer) {
         this.objectStorageService = objectStorageService;
         this.coasterWriteRepository = coasterWriteRepository;
         this.matchingRepository = matchingRepository;
         this.embeddingService = embeddingService;
         this.embeddingProperties = embeddingProperties;
+        this.imageBytesNormalizer = imageBytesNormalizer;
     }
 
     @Override
     @Transactional
     public UUID add(String name, byte[] frontImage, byte[] backImage) {
+        frontImage = normalize(frontImage);
+        backImage = normalize(backImage);
+
         UUID coasterId = UUID.randomUUID();
 
         String frontKey = objectStorageService.putImage("coasters/front", frontImage);
@@ -67,6 +74,14 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
         );
 
         return coasterId;
+    }
+
+    private byte[] normalize(byte[] image) {
+        try {
+            return imageBytesNormalizer.normalize(image);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to normalize image", e);
+        }
     }
 
     private String sha256(byte[] bytes) {
