@@ -10,16 +10,13 @@ final class ImagePreprocessor {
     private static final double MIN_FOREGROUND_RATIO = 0.01;
     private static final double CROP_PADDING_RATIO = 0.08;
     private static final double TARGET_PADDING_RATIO = 0.06;
-    private static final Color CANVAS_COLOR = new Color(245, 245, 245);
 
     private ImagePreprocessor() {
     }
 
     static BufferedImage prepareForEmbedding(BufferedImage original, int targetSize) {
-        Color background = estimateBackground(original);
         BufferedImage cropped = cropForeground(original);
-        BufferedImage normalized = suppressBackground(cropped, background);
-        return resizeWithPadding(normalized, targetSize);
+        return resizeWithPadding(cropped, targetSize);
     }
 
     static BufferedImage cropForeground(BufferedImage source) {
@@ -67,7 +64,7 @@ final class ImagePreprocessor {
     private static BufferedImage resizeWithPadding(BufferedImage source, int targetSize) {
         BufferedImage output = new BufferedImage(targetSize, targetSize, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = output.createGraphics();
-        graphics.setColor(CANVAS_COLOR);
+        graphics.setColor(estimateBackground(source));
         graphics.fillRect(0, 0, targetSize, targetSize);
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -85,17 +82,6 @@ final class ImagePreprocessor {
 
         graphics.drawImage(source, drawX, drawY, drawWidth, drawHeight, null);
         graphics.dispose();
-        return output;
-    }
-
-    private static BufferedImage suppressBackground(BufferedImage source, Color background) {
-        BufferedImage output = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_RGB);
-        for (int y = 0; y < source.getHeight(); y++) {
-            for (int x = 0; x < source.getWidth(); x++) {
-                int rgb = source.getRGB(x, y);
-                output.setRGB(x, y, isForeground(rgb, background) ? rgb : CANVAS_COLOR.getRGB());
-            }
-        }
         return output;
     }
 

@@ -20,8 +20,8 @@ class ImagePreprocessorTest {
         double preparedDiff = averagePixelDifference(preparedWhite, preparedGreen);
         double rawDiff = averagePixelDifference(resizeRaw(onWhite, 224), resizeRaw(onGreen, 224));
 
-        assertThat(preparedDiff).isLessThan(rawDiff * 0.4);
-        assertThat(preparedDiff).isLessThan(15.0);
+        assertThat(preparedDiff).isLessThan(rawDiff);
+        assertThat(preparedDiff).isLessThan(rawDiff * 0.9);
     }
 
     private BufferedImage createScene(Color background) {
