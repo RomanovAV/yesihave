@@ -46,38 +46,24 @@ public class OnnxEmbeddingService implements EmbeddingService {
     @Override
     public float[] toEmbedding(byte[] imageBytes) {
         try {
-            float[] chw = preprocess(imageBytes);
-            float[][][][] input = new float[1][3][INPUT_SIZE][INPUT_SIZE];
-            int idx = 0;
-            for (int c = 0; c < 3; c++) {
-                for (int y = 0; y < INPUT_SIZE; y++) {
-                    for (int x = 0; x < INPUT_SIZE; x++) {
-                        input[0][c][y][x] = chw[idx++];
-                    }
-                }
-            }
-
-            try (OnnxTensor tensor = OnnxTensor.createTensor(environment, input);
-                 OrtSession.Result result = session.run(Map.of(inputName, tensor))) {
-                Object value = outputName == null
-                        ? result.get(0).getValue()
-                        : result.get(outputName).get().getValue();
-                float[] embedding = extractEmbedding(value);
-                return normalize(embedding);
-            }
+            BufferedImage original = readImage(imageBytes);
+            float[] fullViewEmbedding = runInference(toInputTensor(ImagePreprocessor.prepareFullImageForEmbedding(original, INPUT_SIZE)));
+            float[] croppedViewEmbedding = runInference(toInputTensor(ImagePreprocessor.prepareForEmbedding(original, INPUT_SIZE)));
+            return averageAndNormalize(fullViewEmbedding, croppedViewEmbedding);
         } catch (IOException | OrtException e) {
             throw new IllegalStateException("Failed to create embedding with ONNX", e);
         }
     }
 
-    private float[] preprocess(byte[] imageBytes) throws IOException {
+    private BufferedImage readImage(byte[] imageBytes) throws IOException {
         BufferedImage original = ImageIO.read(new ByteArrayInputStream(imageBytes));
         if (original == null) {
             throw new IllegalArgumentException("Unsupported image content");
         }
+        return original;
+    }
 
-        BufferedImage resized = ImagePreprocessor.prepareForEmbedding(original, INPUT_SIZE);
-
+    private float[][][][] toInputTensor(BufferedImage resized) {
         float[] output = new float[3 * INPUT_SIZE * INPUT_SIZE];
         int planeSize = INPUT_SIZE * INPUT_SIZE;
 
@@ -93,7 +79,36 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 output[2 * planeSize + pos] = (b - 0.406f) / 0.225f;
             }
         }
-        return output;
+
+        float[][][][] input = new float[1][3][INPUT_SIZE][INPUT_SIZE];
+        int idx = 0;
+        for (int c = 0; c < 3; c++) {
+            for (int y = 0; y < INPUT_SIZE; y++) {
+                for (int x = 0; x < INPUT_SIZE; x++) {
+                    input[0][c][y][x] = output[idx++];
+                }
+            }
+        }
+        return input;
+    }
+
+    private float[] runInference(float[][][][] input) throws OrtException {
+        try (OnnxTensor tensor = OnnxTensor.createTensor(environment, input);
+             OrtSession.Result result = session.run(Map.of(inputName, tensor))) {
+            Object value = outputName == null
+                    ? result.get(0).getValue()
+                    : result.get(outputName).get().getValue();
+            float[] embedding = extractEmbedding(value);
+            return normalize(embedding);
+        }
+    }
+
+    private float[] averageAndNormalize(float[] first, float[] second) {
+        float[] result = new float[dimension];
+        for (int i = 0; i < dimension; i++) {
+            result[i] = (first[i] + second[i]) / 2.0f;
+        }
+        return normalize(result);
     }
 
     private float[] extractEmbedding(Object value) {

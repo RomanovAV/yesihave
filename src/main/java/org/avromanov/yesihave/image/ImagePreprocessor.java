@@ -19,6 +19,10 @@ final class ImagePreprocessor {
         return resizeWithPadding(cropped, targetSize);
     }
 
+    static BufferedImage prepareFullImageForEmbedding(BufferedImage original, int targetSize) {
+        return resizeWithPadding(original, targetSize);
+    }
+
     static BufferedImage cropForeground(BufferedImage source) {
         int width = source.getWidth();
         int height = source.getHeight();
