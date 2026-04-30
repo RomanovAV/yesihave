@@ -26,7 +26,7 @@ test-integration:
 	mvn -Dtest=IntegrationFlowTest test
 
 reindex:
-	./scripts/reindex-embeddings.sh
+	$(COMPOSE) run --rm reindex
 
 export-model:
 	python3 -m venv .venv

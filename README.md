@@ -111,6 +111,44 @@ APP_EMBEDDING_MODEL_VERSION=clip-v1 \
 
 The reindex script skips entries that already have the same `model_version`.
 
+On a server without local Maven installed, use:
+
+```bash
+make reindex
+```
+
+This runs reindexing in a dedicated Docker Compose service with Maven available inside the container.
+
+For a local run from this repository, use an absolute host path for the model, for example:
+
+```bash
+APP_EMBEDDING_PROVIDER=onnx \
+APP_ONNX_MODEL_PATH=/Users/alexeyromanov/IdeaProjects/YesIHave/models/clip-vitb32.onnx \
+APP_ONNX_INPUT_NAME=image \
+APP_ONNX_OUTPUT_NAME=embedding \
+APP_EMBEDDING_DIMENSION=512 \
+APP_EMBEDDING_MODEL_VERSION=clip-vitb32-v1 \
+./scripts/reindex-embeddings.sh
+```
+
+## Matching thresholds
+
+Duplicate detection thresholds are configurable through environment variables:
+
+```bash
+APP_MATCH_PAIR_THRESHOLD=0.90
+APP_MATCH_MIN_SIDE_THRESHOLD=0.86
+APP_UNCERTAIN_PAIR_THRESHOLD=0.84
+APP_MATCH_TOP_K_SIDE=20
+APP_MATCH_TOP_K_RESPONSE=3
+```
+
+To inspect current score distribution in PostgreSQL, run:
+
+```bash
+docker compose exec -T postgres psql -U yesihave -d yesihave < scripts/analyze-check-thresholds.sql
+```
+
 ## API stub
 
 `POST /api/check` with `multipart/form-data`:

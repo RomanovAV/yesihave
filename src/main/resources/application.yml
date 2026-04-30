@@ -26,6 +26,12 @@ app:
     onnx-output-name: ${APP_ONNX_OUTPUT_NAME:}
     dimension: ${APP_EMBEDDING_DIMENSION:512}
     model-version: ${APP_EMBEDDING_MODEL_VERSION:deterministic-v1}
+  matching:
+    match-pair-threshold: ${APP_MATCH_PAIR_THRESHOLD:0.90}
+    match-min-side-threshold: ${APP_MATCH_MIN_SIDE_THRESHOLD:0.86}
+    uncertain-pair-threshold: ${APP_UNCERTAIN_PAIR_THRESHOLD:0.84}
+    top-k-side: ${APP_MATCH_TOP_K_SIDE:20}
+    top-k-response: ${APP_MATCH_TOP_K_RESPONSE:3}
   telegram:
     token: ${APP_TELEGRAM_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}

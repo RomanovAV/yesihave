@@ -19,25 +19,22 @@ import java.util.Set;
 
 @Service
 public class DefaultCheckPairUseCase implements CheckPairUseCase {
-    private static final double MATCH_PAIR_THRESHOLD = 0.90;
-    private static final double MATCH_MIN_SIDE_THRESHOLD = 0.86;
-    private static final double UNCERTAIN_PAIR_THRESHOLD = 0.84;
-    private static final int TOP_K_SIDE = 20;
-    private static final int TOP_K_RESPONSE = 3;
-
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
     private final CheckAuditRepository checkAuditRepository;
     private final ObjectStorageService objectStorageService;
+    private final MatchingProperties matchingProperties;
 
     public DefaultCheckPairUseCase(EmbeddingService embeddingService,
                                    MatchingRepository matchingRepository,
                                    CheckAuditRepository checkAuditRepository,
-                                   ObjectStorageService objectStorageService) {
+                                   ObjectStorageService objectStorageService,
+                                   MatchingProperties matchingProperties) {
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.checkAuditRepository = checkAuditRepository;
         this.objectStorageService = objectStorageService;
+        this.matchingProperties = matchingProperties;
     }
 
     @Override
@@ -79,8 +76,8 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     }
 
     private List<MatchedCandidateRow> fetchScoredCandidates(float[] frontEmbedding, float[] backEmbedding) {
-        List<java.util.UUID> frontIds = matchingRepository.findTopFrontIds(frontEmbedding, TOP_K_SIDE);
-        List<java.util.UUID> backIds = matchingRepository.findTopBackIds(backEmbedding, TOP_K_SIDE);
+        List<java.util.UUID> frontIds = matchingRepository.findTopFrontIds(frontEmbedding, matchingProperties.topKSide());
+        List<java.util.UUID> backIds = matchingRepository.findTopBackIds(backEmbedding, matchingProperties.topKSide());
 
         Set<java.util.UUID> merged = new LinkedHashSet<>(frontIds);
         merged.addAll(backIds);
@@ -91,7 +88,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     private List<CandidateDto> rankCandidates(List<MatchedCandidateRow> scoredRows) {
         List<MatchedCandidateRow> sorted = scoredRows.stream()
                 .sorted(Comparator.comparingDouble(this::pairScore).reversed())
-                .limit(TOP_K_RESPONSE)
+                .limit(matchingProperties.topKResponse())
                 .toList();
 
         List<CandidateDto> result = new ArrayList<>(sorted.size());
@@ -114,10 +111,11 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
             return MatchDecision.NO_MATCH;
         }
         double minSide = Math.min(best.scoreFront(), best.scoreBack());
-        if (best.pairScore() >= MATCH_PAIR_THRESHOLD && minSide >= MATCH_MIN_SIDE_THRESHOLD) {
+        if (best.pairScore() >= matchingProperties.matchPairThreshold()
+                && minSide >= matchingProperties.matchMinSideThreshold()) {
             return MatchDecision.MATCH;
         }
-        if (best.pairScore() >= UNCERTAIN_PAIR_THRESHOLD) {
+        if (best.pairScore() >= matchingProperties.uncertainPairThreshold()) {
             return MatchDecision.UNCERTAIN;
         }
         return MatchDecision.NO_MATCH;

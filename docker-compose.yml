@@ -68,6 +68,36 @@ services:
     volumes:
       - ./models:/app/models:ro
 
+  reindex:
+    image: maven:3.9.9-eclipse-temurin-21
+    container_name: yesihave-reindex
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/yesihave
+      DB_USER: yesihave
+      DB_PASSWORD: yesihave
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: coasters
+      APP_TELEGRAM_TOKEN: ${APP_TELEGRAM_TOKEN:-}
+      APP_EMBEDDING_PROVIDER: ${APP_EMBEDDING_PROVIDER:-onnx}
+      APP_EMBEDDING_DIMENSION: ${APP_EMBEDDING_DIMENSION:-512}
+      APP_ONNX_MODEL_PATH: ${APP_ONNX_MODEL_PATH:-/workspace/models/clip-vitb32.onnx}
+      APP_ONNX_INPUT_NAME: ${APP_ONNX_INPUT_NAME:-}
+      APP_ONNX_OUTPUT_NAME: ${APP_ONNX_OUTPUT_NAME:-}
+      APP_EMBEDDING_MODEL_VERSION: ${APP_EMBEDDING_MODEL_VERSION:-clip-vitb32-v1}
+    volumes:
+      - ./:/workspace
+    command: ./scripts/reindex-embeddings.sh
+
   nginx:
     image: nginx:1.27-alpine
     container_name: yesihave-nginx
