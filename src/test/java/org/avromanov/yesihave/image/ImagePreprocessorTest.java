@@ -7,8 +7,47 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 class ImagePreprocessorTest {
+    @Test
+    void resizesShortestSideAndCenterCropsLikeClip() {
+        BufferedImage landscape = new BufferedImage(400, 200, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = landscape.createGraphics();
+        graphics.setColor(Color.RED);
+        graphics.fillRect(0, 0, 100, 200);
+        graphics.setColor(Color.GREEN);
+        graphics.fillRect(100, 0, 200, 200);
+        graphics.setColor(Color.BLUE);
+        graphics.fillRect(300, 0, 100, 200);
+        graphics.dispose();
+
+        BufferedImage prepared = ImagePreprocessor.prepareFullImageForEmbedding(landscape, 224);
+
+        assertThat(prepared.getWidth()).isEqualTo(224);
+        assertThat(prepared.getHeight()).isEqualTo(224);
+        assertThat(new Color(prepared.getRGB(112, 112))).isEqualTo(Color.GREEN);
+    }
+
+    @Test
+    void normalizesRgbChannelsWithOpenAiClipConstants() {
+        BufferedImage image = new BufferedImage(
+                ClipImageTensor.INPUT_SIZE,
+                ClipImageTensor.INPUT_SIZE,
+                BufferedImage.TYPE_INT_RGB
+        );
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(new Color(255, 128, 0));
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        graphics.dispose();
+
+        float[][][][] tensor = ClipImageTensor.from(image);
+
+        assertThat(tensor[0][0][0][0]).isCloseTo((1.0f - 0.48145466f) / 0.26862954f, within(0.000001f));
+        assertThat(tensor[0][1][0][0]).isCloseTo(((128.0f / 255.0f) - 0.4578275f) / 0.26130258f, within(0.000001f));
+        assertThat(tensor[0][2][0][0]).isCloseTo((0.0f - 0.40821073f) / 0.27577711f, within(0.000001f));
+    }
+
     @Test
     void keepsSameObjectCloseAcrossDifferentUniformBackgrounds() {
         BufferedImage onWhite = createScene(new Color(245, 245, 245));

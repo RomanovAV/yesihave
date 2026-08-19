@@ -17,8 +17,6 @@ import java.util.Map;
 @Service
 @ConditionalOnProperty(prefix = "app.embedding", name = "provider", havingValue = "onnx")
 public class OnnxEmbeddingService implements EmbeddingService {
-    private static final int INPUT_SIZE = 224;
-
     private final OrtEnvironment environment;
     private final OrtSession session;
     private final String inputName;
@@ -47,8 +45,12 @@ public class OnnxEmbeddingService implements EmbeddingService {
     public float[] toEmbedding(byte[] imageBytes) {
         try {
             BufferedImage original = readImage(imageBytes);
-            float[] fullViewEmbedding = runInference(toInputTensor(ImagePreprocessor.prepareFullImageForEmbedding(original, INPUT_SIZE)));
-            float[] croppedViewEmbedding = runInference(toInputTensor(ImagePreprocessor.prepareForEmbedding(original, INPUT_SIZE)));
+            float[] fullViewEmbedding = runInference(ClipImageTensor.from(
+                    ImagePreprocessor.prepareFullImageForEmbedding(original, ClipImageTensor.INPUT_SIZE)
+            ));
+            float[] croppedViewEmbedding = runInference(ClipImageTensor.from(
+                    ImagePreprocessor.prepareForEmbedding(original, ClipImageTensor.INPUT_SIZE)
+            ));
             return averageAndNormalize(fullViewEmbedding, croppedViewEmbedding);
         } catch (IOException | OrtException e) {
             throw new IllegalStateException("Failed to create embedding with ONNX", e);
@@ -61,35 +63,6 @@ public class OnnxEmbeddingService implements EmbeddingService {
             throw new IllegalArgumentException("Unsupported image content");
         }
         return original;
-    }
-
-    private float[][][][] toInputTensor(BufferedImage resized) {
-        float[] output = new float[3 * INPUT_SIZE * INPUT_SIZE];
-        int planeSize = INPUT_SIZE * INPUT_SIZE;
-
-        for (int y = 0; y < INPUT_SIZE; y++) {
-            for (int x = 0; x < INPUT_SIZE; x++) {
-                int rgb = resized.getRGB(x, y);
-                float r = ((rgb >> 16) & 0xFF) / 255.0f;
-                float g = ((rgb >> 8) & 0xFF) / 255.0f;
-                float b = (rgb & 0xFF) / 255.0f;
-                int pos = y * INPUT_SIZE + x;
-                output[pos] = (r - 0.485f) / 0.229f;
-                output[planeSize + pos] = (g - 0.456f) / 0.224f;
-                output[2 * planeSize + pos] = (b - 0.406f) / 0.225f;
-            }
-        }
-
-        float[][][][] input = new float[1][3][INPUT_SIZE][INPUT_SIZE];
-        int idx = 0;
-        for (int c = 0; c < 3; c++) {
-            for (int y = 0; y < INPUT_SIZE; y++) {
-                for (int x = 0; x < INPUT_SIZE; x++) {
-                    input[0][c][y][x] = output[idx++];
-                }
-            }
-        }
-        return input;
     }
 
     private float[] runInference(float[][][][] input) throws OrtException {

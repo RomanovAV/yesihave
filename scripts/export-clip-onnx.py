@@ -5,6 +5,9 @@ import os
 import open_clip
 import torch
 
+SUPPORTED_MODEL = "ViT-B-32"
+SUPPORTED_PRETRAINED = "openai"
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -13,6 +16,12 @@ def main() -> None:
     parser.add_argument("--output", default="models/clip-vitb32.onnx")
     parser.add_argument("--opset", type=int, default=17)
     args = parser.parse_args()
+
+    if args.model != SUPPORTED_MODEL or args.pretrained != SUPPORTED_PRETRAINED:
+        parser.error(
+            "The Java runtime preprocessing profile supports only "
+            f"--model {SUPPORTED_MODEL} --pretrained {SUPPORTED_PRETRAINED}"
+        )
 
     device = "cpu"
     model, _, _ = open_clip.create_model_and_transforms(
@@ -50,6 +59,7 @@ def main() -> None:
     print("Input name: image")
     print("Output name: embedding")
     print("Embedding dim: 512")
+    print("Preprocessing: OpenAI CLIP bicubic resize + center crop + CLIP channel normalization")
 
 
 if __name__ == "__main__":

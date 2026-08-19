@@ -64,7 +64,7 @@ services:
       APP_ONNX_MODEL_PATH: ${APP_ONNX_MODEL_PATH:-/app/models/clip-vitb32.onnx}
       APP_ONNX_INPUT_NAME: ${APP_ONNX_INPUT_NAME:-}
       APP_ONNX_OUTPUT_NAME: ${APP_ONNX_OUTPUT_NAME:-}
-      APP_EMBEDDING_MODEL_VERSION: ${APP_EMBEDDING_MODEL_VERSION:-clip-vitb32-v1}
+      APP_EMBEDDING_MODEL_VERSION: ${APP_EMBEDDING_MODEL_VERSION:-clip-vitb32-openai-preprocess-v2}
     volumes:
       - ./models:/app/models:ro
 
@@ -93,7 +93,7 @@ services:
       APP_ONNX_MODEL_PATH: ${APP_REINDEX_ONNX_MODEL_PATH:-/workspace/models/clip-vitb32.onnx}
       APP_ONNX_INPUT_NAME: ${APP_REINDEX_ONNX_INPUT_NAME:-}
       APP_ONNX_OUTPUT_NAME: ${APP_REINDEX_ONNX_OUTPUT_NAME:-}
-      APP_EMBEDDING_MODEL_VERSION: ${APP_REINDEX_EMBEDDING_MODEL_VERSION:-clip-vitb32-v1}
+      APP_EMBEDDING_MODEL_VERSION: ${APP_REINDEX_EMBEDDING_MODEL_VERSION:-clip-vitb32-openai-preprocess-v2}
     volumes:
       - ./:/workspace
     command: ./scripts/reindex-embeddings.sh

@@ -73,6 +73,11 @@ By default app uses ONNX provider (`APP_EMBEDDING_PROVIDER=onnx`) for local/dev 
 
 Make sure `APP_ONNX_MODEL_PATH` points to a valid model file. In Docker Compose the default is `/app/models/clip-vitb32.onnx`.
 
+The Java runtime preprocessing profile is intentionally tied to `ViT-B-32` with
+OpenAI weights: bicubic resize, center crop, and the OpenAI CLIP channel
+normalization constants. The export script rejects other model profiles so that
+an incompatible ONNX file cannot be produced silently.
+
 For ONNX provider:
 
 - set `APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx`
@@ -108,11 +113,14 @@ When running in Docker Compose, `./models` is mounted to `/app/models` in the ap
 APP_EMBEDDING_PROVIDER=onnx \
 APP_ONNX_MODEL_PATH=/absolute/path/to/model.onnx \
 APP_EMBEDDING_DIMENSION=512 \
-APP_EMBEDDING_MODEL_VERSION=clip-v1 \
+APP_EMBEDDING_MODEL_VERSION=clip-vitb32-openai-preprocess-v2 \
 ./scripts/reindex-embeddings.sh
 ```
 
 The reindex script skips entries that already have the same `model_version`.
+The `preprocess-v2` version is incompatible with embeddings created by the old
+ImageNet-normalized pipeline, so existing collections must be reindexed before
+matching traffic is enabled.
 
 On a server without local Maven installed, use:
 
@@ -126,7 +134,7 @@ This runs reindexing in a dedicated Docker Compose service with Maven available 
 
 ```bash
 APP_REINDEX_ONNX_MODEL_PATH=/workspace/models/clip-vitb32.onnx
-APP_REINDEX_EMBEDDING_MODEL_VERSION=clip-vitb32-v1
+APP_REINDEX_EMBEDDING_MODEL_VERSION=clip-vitb32-openai-preprocess-v2
 ```
 
 For a local run from this repository, use an absolute host path for the model, for example:
@@ -137,7 +145,7 @@ APP_ONNX_MODEL_PATH=/Users/alexeyromanov/IdeaProjects/YesIHave/models/clip-vitb3
 APP_ONNX_INPUT_NAME=image \
 APP_ONNX_OUTPUT_NAME=embedding \
 APP_EMBEDDING_DIMENSION=512 \
-APP_EMBEDDING_MODEL_VERSION=clip-vitb32-v1 \
+APP_EMBEDDING_MODEL_VERSION=clip-vitb32-openai-preprocess-v2 \
 ./scripts/reindex-embeddings.sh
 ```
 

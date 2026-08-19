@@ -9,18 +9,17 @@ final class ImagePreprocessor {
     private static final double FOREGROUND_DISTANCE_THRESHOLD = 55.0;
     private static final double MIN_FOREGROUND_RATIO = 0.01;
     private static final double CROP_PADDING_RATIO = 0.08;
-    private static final double TARGET_PADDING_RATIO = 0.06;
 
     private ImagePreprocessor() {
     }
 
     static BufferedImage prepareForEmbedding(BufferedImage original, int targetSize) {
         BufferedImage cropped = cropForeground(original);
-        return resizeWithPadding(cropped, targetSize);
+        return resizeAndCenterCrop(cropped, targetSize);
     }
 
     static BufferedImage prepareFullImageForEmbedding(BufferedImage original, int targetSize) {
-        return resizeWithPadding(original, targetSize);
+        return resizeAndCenterCrop(original, targetSize);
     }
 
     static BufferedImage cropForeground(BufferedImage source) {
@@ -65,22 +64,24 @@ final class ImagePreprocessor {
         return source.getSubimage(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
-    private static BufferedImage resizeWithPadding(BufferedImage source, int targetSize) {
+    static BufferedImage resizeAndCenterCrop(BufferedImage source, int targetSize) {
+        if (targetSize <= 0) {
+            throw new IllegalArgumentException("targetSize must be > 0");
+        }
+
         BufferedImage output = new BufferedImage(targetSize, targetSize, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = output.createGraphics();
-        graphics.setColor(estimateBackground(source));
-        graphics.fillRect(0, 0, targetSize, targetSize);
-        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        int usableSize = Math.max(1, (int) Math.round(targetSize * (1.0 - 2.0 * TARGET_PADDING_RATIO)));
-        double scale = Math.min(
-                usableSize / (double) source.getWidth(),
-                usableSize / (double) source.getHeight()
+        double scale = Math.max(
+                targetSize / (double) source.getWidth(),
+                targetSize / (double) source.getHeight()
         );
 
-        int drawWidth = Math.max(1, (int) Math.round(source.getWidth() * scale));
-        int drawHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
+        int drawWidth = Math.max(targetSize, (int) Math.round(source.getWidth() * scale));
+        int drawHeight = Math.max(targetSize, (int) Math.round(source.getHeight() * scale));
         int drawX = (targetSize - drawWidth) / 2;
         int drawY = (targetSize - drawHeight) / 2;
 
