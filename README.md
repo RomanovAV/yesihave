@@ -122,6 +122,26 @@ The `preprocess-v2` version is incompatible with embeddings created by the old
 ImageNet-normalized pipeline, so existing collections must be reindexed before
 matching traffic is enabled.
 
+Embedding versions use a blue/green lifecycle. Reindex writes the configured
+version alongside the currently active version and marks it `ACTIVE` only after
+every coaster has been processed. A failed run leaves the previous version
+active and can be resumed safely. The application refuses to start when its
+configured version is not active, and it rejects reuse of a version name with a
+different ONNX file fingerprint or preprocessing profile.
+
+For a safe upgrade, stop the application and run infrastructure + reindex before
+starting matching traffic again:
+
+```bash
+make infra-up
+make reindex
+make up
+```
+
+During future rolling upgrades, old application instances continue reading
+their configured version, but writes are rejected after the active-version
+switch so that new coasters cannot be added to a retired pipeline.
+
 On a server without local Maven installed, use:
 
 ```bash

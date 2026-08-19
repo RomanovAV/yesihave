@@ -1,13 +1,14 @@
 package org.avromanov.yesihave.application;
 
-import org.avromanov.yesihave.image.EmbeddingProperties;
+import org.avromanov.yesihave.image.EmbeddingPipelineDescriptor;
+import org.avromanov.yesihave.image.EmbeddingPipelineDescriptorProvider;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CoasterReadRepository;
+import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -17,27 +18,31 @@ public class ReindexEmbeddingsService {
     private final ObjectStorageService objectStorageService;
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
-    private final EmbeddingProperties embeddingProperties;
+    private final EmbeddingPipelineDescriptorProvider descriptorProvider;
+    private final EmbeddingVersionRepository embeddingVersionRepository;
     private final ImageBytesNormalizer imageBytesNormalizer;
 
     public ReindexEmbeddingsService(CoasterReadRepository coasterReadRepository,
                                     ObjectStorageService objectStorageService,
                                     EmbeddingService embeddingService,
                                     MatchingRepository matchingRepository,
-                                    EmbeddingProperties embeddingProperties,
+                                    EmbeddingPipelineDescriptorProvider descriptorProvider,
+                                    EmbeddingVersionRepository embeddingVersionRepository,
                                     ImageBytesNormalizer imageBytesNormalizer) {
         this.coasterReadRepository = coasterReadRepository;
         this.objectStorageService = objectStorageService;
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
-        this.embeddingProperties = embeddingProperties;
+        this.descriptorProvider = descriptorProvider;
+        this.embeddingVersionRepository = embeddingVersionRepository;
         this.imageBytesNormalizer = imageBytesNormalizer;
     }
 
-    @Transactional
     public int reindexAll() {
+        EmbeddingPipelineDescriptor descriptor = descriptorProvider.descriptor();
+        embeddingVersionRepository.beginBuild(descriptor);
         List<CoasterReadRepository.CoasterImagePair> pairs =
-                coasterReadRepository.findPairsNeedingReindex(embeddingProperties.modelVersion());
+                coasterReadRepository.findPairsNeedingReindex(descriptor.modelVersion());
         int processed = 0;
         for (CoasterReadRepository.CoasterImagePair pair : pairs) {
             byte[] frontBytes = normalize(objectStorageService.getBytes(pair.frontKey()));
@@ -48,12 +53,13 @@ public class ReindexEmbeddingsService {
 
             matchingRepository.upsertEmbedding(
                     pair.coasterId(),
-                    embeddingProperties.modelVersion(),
+                    descriptor.modelVersion(),
                     frontEmbedding,
                     backEmbedding
             );
             processed++;
         }
+        embeddingVersionRepository.activate(descriptor);
         return processed;
     }
 

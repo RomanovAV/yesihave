@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage;
 
 final class ClipImageTensor {
     static final int INPUT_SIZE = 224;
+    static final String PREPROCESSING_PROFILE = "openai-clip-bicubic-center-crop-dual-view-v2";
 
     private static final float[] CHANNEL_MEAN = {
             0.48145466f,

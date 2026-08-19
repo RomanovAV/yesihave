@@ -26,6 +26,7 @@ app:
     onnx-output-name: ${APP_ONNX_OUTPUT_NAME:}
     dimension: ${APP_EMBEDDING_DIMENSION:512}
     model-version: ${APP_EMBEDDING_MODEL_VERSION:clip-vitb32-openai-preprocess-v2}
+    require-active-version: ${APP_EMBEDDING_REQUIRE_ACTIVE_VERSION:true}
   matching:
     match-pair-threshold: ${APP_MATCH_PAIR_THRESHOLD:0.90}
     match-min-side-threshold: ${APP_MATCH_MIN_SIDE_THRESHOLD:0.86}

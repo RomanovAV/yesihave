@@ -4,6 +4,7 @@ import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.persistence.CoasterWriteRepository;
+import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
     private final ObjectStorageService objectStorageService;
     private final CoasterWriteRepository coasterWriteRepository;
     private final MatchingRepository matchingRepository;
+    private final EmbeddingVersionRepository embeddingVersionRepository;
     private final EmbeddingService embeddingService;
     private final EmbeddingProperties embeddingProperties;
     private final ImageBytesNormalizer imageBytesNormalizer;
@@ -26,12 +28,14 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
     public DefaultAddCoasterUseCase(ObjectStorageService objectStorageService,
                                     CoasterWriteRepository coasterWriteRepository,
                                     MatchingRepository matchingRepository,
+                                    EmbeddingVersionRepository embeddingVersionRepository,
                                     EmbeddingService embeddingService,
                                     EmbeddingProperties embeddingProperties,
                                     ImageBytesNormalizer imageBytesNormalizer) {
         this.objectStorageService = objectStorageService;
         this.coasterWriteRepository = coasterWriteRepository;
         this.matchingRepository = matchingRepository;
+        this.embeddingVersionRepository = embeddingVersionRepository;
         this.embeddingService = embeddingService;
         this.embeddingProperties = embeddingProperties;
         this.imageBytesNormalizer = imageBytesNormalizer;
@@ -42,6 +46,7 @@ public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
     public UUID add(String name, byte[] frontImage, byte[] backImage) {
         frontImage = normalize(frontImage);
         backImage = normalize(backImage);
+        embeddingVersionRepository.requireActiveForWrite(embeddingProperties.modelVersion());
 
         UUID coasterId = UUID.randomUUID();
 

@@ -41,8 +41,9 @@ public class CoasterReadRepository {
                 FROM coasters c
                 JOIN coaster_images f ON f.coaster_id = c.id AND f.side = 'FRONT'
                 JOIN coaster_images b ON b.coaster_id = c.id AND b.side = 'BACK'
-                LEFT JOIN coaster_embeddings ce ON ce.coaster_id = c.id
-                WHERE ce.model_version IS NULL OR ce.model_version <> ?
+                LEFT JOIN coaster_embeddings ce
+                  ON ce.coaster_id = c.id AND ce.model_version = ?
+                WHERE ce.coaster_id IS NULL
                 """,
                 (rs, rowNum) -> new CoasterImagePair(
                         UUID.fromString(rs.getString("id")),

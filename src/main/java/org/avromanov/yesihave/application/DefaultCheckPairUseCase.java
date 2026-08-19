@@ -3,6 +3,7 @@ package org.avromanov.yesihave.application;
 import org.avromanov.yesihave.application.model.CandidateDto;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
+import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CheckAuditRepository;
@@ -25,6 +26,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     private final CheckAuditRepository checkAuditRepository;
     private final ObjectStorageService objectStorageService;
     private final MatchingProperties matchingProperties;
+    private final EmbeddingProperties embeddingProperties;
     private final ImageBytesNormalizer imageBytesNormalizer;
 
     public DefaultCheckPairUseCase(EmbeddingService embeddingService,
@@ -32,12 +34,14 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
                                    CheckAuditRepository checkAuditRepository,
                                    ObjectStorageService objectStorageService,
                                    MatchingProperties matchingProperties,
+                                   EmbeddingProperties embeddingProperties,
                                    ImageBytesNormalizer imageBytesNormalizer) {
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.checkAuditRepository = checkAuditRepository;
         this.objectStorageService = objectStorageService;
         this.matchingProperties = matchingProperties;
+        this.embeddingProperties = embeddingProperties;
         this.imageBytesNormalizer = imageBytesNormalizer;
     }
 
@@ -91,13 +95,27 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     }
 
     private List<MatchedCandidateRow> fetchScoredCandidates(float[] frontEmbedding, float[] backEmbedding) {
-        List<java.util.UUID> frontIds = matchingRepository.findTopFrontIds(frontEmbedding, matchingProperties.topKSide());
-        List<java.util.UUID> backIds = matchingRepository.findTopBackIds(backEmbedding, matchingProperties.topKSide());
+        String modelVersion = embeddingProperties.modelVersion();
+        List<java.util.UUID> frontIds = matchingRepository.findTopFrontIds(
+                modelVersion,
+                frontEmbedding,
+                matchingProperties.topKSide()
+        );
+        List<java.util.UUID> backIds = matchingRepository.findTopBackIds(
+                modelVersion,
+                backEmbedding,
+                matchingProperties.topKSide()
+        );
 
         Set<java.util.UUID> merged = new LinkedHashSet<>(frontIds);
         merged.addAll(backIds);
 
-        return matchingRepository.scoreCandidates(new ArrayList<>(merged), frontEmbedding, backEmbedding);
+        return matchingRepository.scoreCandidates(
+                modelVersion,
+                new ArrayList<>(merged),
+                frontEmbedding,
+                backEmbedding
+        );
     }
 
     private List<CandidateDto> rankCandidates(List<MatchedCandidateRow> scoredRows) {

@@ -65,12 +65,14 @@ services:
       APP_ONNX_INPUT_NAME: ${APP_ONNX_INPUT_NAME:-}
       APP_ONNX_OUTPUT_NAME: ${APP_ONNX_OUTPUT_NAME:-}
       APP_EMBEDDING_MODEL_VERSION: ${APP_EMBEDDING_MODEL_VERSION:-clip-vitb32-openai-preprocess-v2}
+      APP_EMBEDDING_REQUIRE_ACTIVE_VERSION: "true"
     volumes:
       - ./models:/app/models:ro
 
   reindex:
     image: maven:3.9.9-eclipse-temurin-21
     container_name: yesihave-reindex
+    profiles: ["tools"]
     working_dir: /workspace
     depends_on:
       postgres:
@@ -94,6 +96,7 @@ services:
       APP_ONNX_INPUT_NAME: ${APP_REINDEX_ONNX_INPUT_NAME:-}
       APP_ONNX_OUTPUT_NAME: ${APP_REINDEX_ONNX_OUTPUT_NAME:-}
       APP_EMBEDDING_MODEL_VERSION: ${APP_REINDEX_EMBEDDING_MODEL_VERSION:-clip-vitb32-openai-preprocess-v2}
+      APP_EMBEDDING_REQUIRE_ACTIVE_VERSION: "false"
     volumes:
       - ./:/workspace
     command: ./scripts/reindex-embeddings.sh

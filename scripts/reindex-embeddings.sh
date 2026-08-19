@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export SPRING_MAIN_WEB_APPLICATION_TYPE=none
+export APP_EMBEDDING_REQUIRE_ACTIVE_VERSION=false
 
 if [[ "${1:-}" == "--help" ]]; then
   echo "Usage: APP_EMBEDDING_PROVIDER=onnx APP_ONNX_MODEL_PATH=/abs/model.onnx ./scripts/reindex-embeddings.sh"
