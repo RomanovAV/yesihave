@@ -5,6 +5,7 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.GetObjectArgs;
+import io.minio.RemoveObjectArgs;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
@@ -68,6 +69,20 @@ public class MinioObjectStorageService implements ObjectStorageService {
             return inputStream.readAllBytes();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to read image from MinIO", e);
+        }
+    }
+
+    @Override
+    public void delete(String objectKey) {
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(properties.bucket())
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to delete image from MinIO: " + objectKey, e);
         }
     }
 }

@@ -9,14 +9,16 @@ import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CheckAuditRepository;
 import org.avromanov.yesihave.persistence.MatchedCandidateRow;
 import org.avromanov.yesihave.persistence.MatchingRepository;
-import org.avromanov.yesihave.storage.ObjectStorageService;
+import org.avromanov.yesihave.storage.ObjectStorageWriteBatch;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -24,29 +26,31 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
     private final CheckAuditRepository checkAuditRepository;
-    private final ObjectStorageService objectStorageService;
+    private final ObjectStorageWriteBatch objectStorageWriteBatch;
     private final MatchingProperties matchingProperties;
     private final EmbeddingProperties embeddingProperties;
     private final ImageBytesNormalizer imageBytesNormalizer;
+    private final TransactionTemplate transactionTemplate;
 
     public DefaultCheckPairUseCase(EmbeddingService embeddingService,
                                    MatchingRepository matchingRepository,
                                    CheckAuditRepository checkAuditRepository,
-                                   ObjectStorageService objectStorageService,
+                                   ObjectStorageWriteBatch objectStorageWriteBatch,
                                    MatchingProperties matchingProperties,
                                    EmbeddingProperties embeddingProperties,
-                                   ImageBytesNormalizer imageBytesNormalizer) {
+                                   ImageBytesNormalizer imageBytesNormalizer,
+                                   PlatformTransactionManager transactionManager) {
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.checkAuditRepository = checkAuditRepository;
-        this.objectStorageService = objectStorageService;
+        this.objectStorageWriteBatch = objectStorageWriteBatch;
         this.matchingProperties = matchingProperties;
         this.embeddingProperties = embeddingProperties;
         this.imageBytesNormalizer = imageBytesNormalizer;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Override
-    @Transactional
     public MatchResultDto check(long telegramUserId, byte[] frontImage, byte[] backImage) {
         frontImage = normalize(frontImage);
         backImage = normalize(backImage);
@@ -60,30 +64,39 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
         CandidateDto best = rankedCandidates.isEmpty() ? null : rankedCandidates.getFirst();
         MatchDecision decision = classify(best);
 
-        String frontImageKey = objectStorageService.putImage("checks/front", frontImage);
-        String backImageKey = objectStorageService.putImage("checks/back", backImage);
-
         var matchedCoasterId = decision == MatchDecision.MATCH && best != null ? best.coasterId() : null;
-        var requestId = checkAuditRepository.insertCheckRequest(
-                telegramUserId,
-                frontImageKey,
-                backImageKey,
-                best == null ? null : best.scoreFront(),
-                best == null ? null : best.scoreBack(),
-                best == null ? null : best.pairScore(),
-                decision,
-                matchedCoasterId
-        );
-        checkAuditRepository.insertCandidates(requestId, rankedCandidates);
+        byte[] normalizedFront = frontImage;
+        byte[] normalizedBack = backImage;
+        return objectStorageWriteBatch.execute(uploads -> {
+            String frontImageKey = uploads.putImage("checks/front", normalizedFront);
+            String backImageKey = uploads.putImage("checks/back", normalizedBack);
 
-        return new MatchResultDto(
-                decision,
-                best == null ? null : best.scoreFront(),
-                best == null ? null : best.scoreBack(),
-                best == null ? null : best.pairScore(),
-                matchedCoasterId,
-                rankedCandidates
-        );
+            MatchResultDto result = transactionTemplate.execute(status -> {
+                uploads.registerRollbackCleanup();
+                var requestId = checkAuditRepository.insertCheckRequest(
+                        telegramUserId,
+                        frontImageKey,
+                        backImageKey,
+                        best == null ? null : best.scoreFront(),
+                        best == null ? null : best.scoreBack(),
+                        best == null ? null : best.pairScore(),
+                        decision,
+                        matchedCoasterId
+                );
+                checkAuditRepository.insertCandidates(requestId, rankedCandidates);
+
+                return new MatchResultDto(
+                        decision,
+                        best == null ? null : best.scoreFront(),
+                        best == null ? null : best.scoreBack(),
+                        best == null ? null : best.pairScore(),
+                        matchedCoasterId,
+                        rankedCandidates,
+                        requestId
+                );
+            });
+            return Objects.requireNonNull(result, "Check transaction returned no result");
+        });
     }
 
     private byte[] normalize(byte[] image) {

@@ -1,13 +1,21 @@
 package org.avromanov.yesihave;
 
+import io.minio.ListObjectsArgs;
+import io.minio.MinioClient;
+import io.minio.Result;
+import io.minio.messages.Item;
+import org.avromanov.yesihave.application.AddCheckedCoasterUseCase;
 import org.avromanov.yesihave.application.AddCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
+import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
+import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.avromanov.yesihave.image.EmbeddingPipelineDescriptor;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
+import org.avromanov.yesihave.storage.StorageProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -64,7 +72,13 @@ class IntegrationFlowTest {
     AddCoasterUseCase addCoasterUseCase;
 
     @Autowired
+    AddCheckedCoasterUseCase addCheckedCoasterUseCase;
+
+    @Autowired
     CheckPairUseCase checkPairUseCase;
+
+    @Autowired
+    RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
 
     @Autowired
     EmbeddingService embeddingService;
@@ -78,8 +92,14 @@ class IntegrationFlowTest {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    MinioClient minioClient;
+
+    @Autowired
+    StorageProperties storageProperties;
+
     @Test
-    void addThenCheckReturnsMatch() {
+    void addThenCheckReturnsMatch() throws Exception {
         byte[] front = new byte[]{1, 2, 3, 4, 5};
         byte[] back = new byte[]{9, 8, 7, 6, 5};
 
@@ -89,6 +109,41 @@ class IntegrationFlowTest {
         assertThat(result.decision()).isEqualTo(MatchDecision.MATCH);
         assertThat(result.matchedCoasterId()).isEqualTo(coasterId);
         assertThat(result.topCandidates()).isNotEmpty();
+        assertThat(result.checkRequestId()).isNotNull();
+
+        recordCheckFeedbackUseCase.confirmMatch(
+                result.checkRequestId(),
+                coasterId,
+                FeedbackSource.API
+        );
+        String storedVerdict = jdbcTemplate.queryForObject(
+                "SELECT verdict::text FROM check_feedback WHERE check_request_id = ?",
+                String.class,
+                result.checkRequestId()
+        );
+        UUID storedMatchedCoaster = jdbcTemplate.queryForObject(
+                "SELECT matched_coaster_id FROM check_feedback WHERE check_request_id = ?",
+                UUID.class,
+                result.checkRequestId()
+        );
+        assertThat(storedVerdict).isEqualTo("MATCH");
+        assertThat(storedMatchedCoaster).isEqualTo(coasterId);
+
+        long storedCoasterObjects = countObjects("coasters/");
+        assertThatThrownBy(() -> addCheckedCoasterUseCase.add(
+                "Must roll back",
+                new byte[]{10, 11, 12},
+                new byte[]{13, 14, 15},
+                UUID.randomUUID(),
+                FeedbackSource.API
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown check request");
+        assertThat(countObjects("coasters/")).isEqualTo(storedCoasterObjects);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coasters WHERE name = 'Must roll back'",
+                Integer.class
+        )).isZero();
 
         float[] frontEmbedding = embeddingService.toEmbedding(front);
         float[] backEmbedding = embeddingService.toEmbedding(back);
@@ -138,5 +193,21 @@ class IntegrationFlowTest {
         assertThat(activeVersion).isEqualTo("test-v2");
         assertThatThrownBy(() -> embeddingVersionRepository.requireActiveForWrite("test-v1"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    private long countObjects(String prefix) throws Exception {
+        long count = 0;
+        Iterable<Result<Item>> results = minioClient.listObjects(
+                ListObjectsArgs.builder()
+                        .bucket(storageProperties.bucket())
+                        .prefix(prefix)
+                        .recursive(true)
+                        .build()
+        );
+        for (Result<Item> result : results) {
+            result.get();
+            count++;
+        }
+        return count;
     }
 }

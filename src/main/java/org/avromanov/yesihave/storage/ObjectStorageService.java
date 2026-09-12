@@ -4,4 +4,6 @@ public interface ObjectStorageService {
     String putImage(String prefix, byte[] bytes);
 
     byte[] getBytes(String objectKey);
+
+    void delete(String objectKey);
 }

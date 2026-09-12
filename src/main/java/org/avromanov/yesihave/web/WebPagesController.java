@@ -1,8 +1,11 @@
 package org.avromanov.yesihave.web;
 
 import org.avromanov.yesihave.application.AddCoasterUseCase;
+import org.avromanov.yesihave.application.AddCheckedCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
+import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
 import org.avromanov.yesihave.application.model.CandidateDto;
+import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.springframework.http.MediaType;
@@ -16,9 +19,11 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -29,13 +34,19 @@ public class WebPagesController {
 
     private final CheckPairUseCase checkPairUseCase;
     private final AddCoasterUseCase addCoasterUseCase;
+    private final AddCheckedCoasterUseCase addCheckedCoasterUseCase;
+    private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
     private final UploadedImageNormalizer uploadedImageNormalizer;
 
     public WebPagesController(CheckPairUseCase checkPairUseCase,
                               AddCoasterUseCase addCoasterUseCase,
+                              AddCheckedCoasterUseCase addCheckedCoasterUseCase,
+                              RecordCheckFeedbackUseCase recordCheckFeedbackUseCase,
                               UploadedImageNormalizer uploadedImageNormalizer) {
         this.checkPairUseCase = checkPairUseCase;
         this.addCoasterUseCase = addCoasterUseCase;
+        this.addCheckedCoasterUseCase = addCheckedCoasterUseCase;
+        this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
         this.uploadedImageNormalizer = uploadedImageNormalizer;
     }
 
@@ -84,7 +95,7 @@ public class WebPagesController {
             byte[] backBytes = uploadedImageNormalizer.normalizeToJpegIfHeic(back);
 
             MatchResultDto result = checkPairUseCase.check(WEB_USER_ID, frontBytes, backBytes);
-            return renderCheckResult(result, storeCheckDraft(session, frontBytes, backBytes));
+            return renderCheckResult(result, storeCheckDraft(session, result, frontBytes, backBytes));
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка ввода", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
         } catch (Exception e) {
@@ -166,13 +177,59 @@ public class WebPagesController {
                 throw new IllegalArgumentException("Черновик фото не найден. Проверьте заново и попробуйте еще раз.");
             }
 
-            UUID id = addCoasterUseCase.add(trimmedName, draft.frontBytes(), draft.backBytes());
+            UUID id = addCheckedCoasterUseCase.add(
+                    trimmedName,
+                    draft.frontBytes(),
+                    draft.backBytes(),
+                    draft.checkRequestId(),
+                    FeedbackSource.WEB
+            );
             removeCheckDraft(session, draftId);
             return renderAddedPage(trimmedName, id, "Использованы фото из последней проверки.");
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка ввода", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
         } catch (Exception e) {
             return errorPage("Ошибка", "Произошла ошибка добавления. Попробуйте снова.", "/web/check");
+        }
+    }
+
+    @PostMapping(
+            value = "/web/feedback/match",
+            consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
+            produces = MediaType.TEXT_HTML_VALUE
+    )
+    public String confirmMatch(@RequestParam("draftId") String draftId,
+                               @RequestParam("coasterId") UUID coasterId,
+                               HttpSession session) {
+        try {
+            CheckDraft draft = getCheckDraft(session, draftId);
+            if (draft == null) {
+                throw new IllegalArgumentException("Черновик проверки не найден. Выполните проверку заново.");
+            }
+            if (!draft.candidateIds().contains(coasterId)) {
+                throw new IllegalArgumentException("Выбранный кандидат не относится к этой проверке.");
+            }
+
+            recordCheckFeedbackUseCase.confirmMatch(
+                    draft.checkRequestId(),
+                    coasterId,
+                    FeedbackSource.WEB
+            );
+            removeCheckDraft(session, draftId);
+            return page("Feedback saved", """
+                    <section class="card">
+                      <h2>Спасибо, подтверждение сохранено</h2>
+                      <p>Эта проверка будет использована для оценки и настройки качества поиска.</p>
+                      <div class="actions">
+                        <a class="btn" href="/web/check">Проверить ещё</a>
+                        <a class="btn secondary" href="/">На главную</a>
+                      </div>
+                    </section>
+                    """);
+        } catch (IllegalArgumentException e) {
+            return errorPage("Ошибка подтверждения", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
+        } catch (Exception e) {
+            return errorPage("Ошибка", "Не удалось сохранить подтверждение. Попробуйте снова.", "/web/check");
         }
     }
 
@@ -224,7 +281,7 @@ public class WebPagesController {
         String matched = r.matchedCoasterId() == null
                 ? "<span class=\"muted\">—</span>"
                 : "<code>" + escapeHtml(r.matchedCoasterId().toString()) + "</code>";
-        String addFromCheck = renderAddFromCheckSection(r, draftId);
+        String feedback = renderFeedbackSection(r, draftId);
         String candidatesTitle = r.decision() == MatchDecision.UNCERTAIN
                 ? "3 лучших кандидата"
                 : "Top кандидаты";
@@ -258,7 +315,7 @@ public class WebPagesController {
                 matched,
                 escapeHtml(candidatesTitle),
                 candidates,
-                addFromCheck
+                feedback
         ));
     }
 
@@ -275,37 +332,61 @@ public class WebPagesController {
         ));
     }
 
-    private String renderAddFromCheckSection(MatchResultDto result, String draftId) {
-        if (result.decision() == MatchDecision.MATCH) {
-            return "";
+    private String renderFeedbackSection(MatchResultDto result, String draftId) {
+        List<CandidateDto> candidates = candidatesForDisplay(result);
+        StringBuilder matchForm = new StringBuilder();
+        if (!candidates.isEmpty()) {
+            matchForm.append("<form method=\"post\" action=\"/web/feedback/match\">")
+                    .append("<input name=\"draftId\" type=\"hidden\" value=\"")
+                    .append(escapeHtml(draftId))
+                    .append("\">")
+                    .append("<p><b>Если это дубликат, выберите правильный экземпляр:</b></p>");
+            boolean first = true;
+            for (CandidateDto candidate : candidates) {
+                matchForm.append("<label>")
+                        .append("<input name=\"coasterId\" type=\"radio\" value=\"")
+                        .append(escapeHtml(candidate.coasterId().toString()))
+                        .append("\"");
+                if (first) {
+                    matchForm.append(" checked");
+                    first = false;
+                }
+                matchForm.append("> ")
+                        .append(escapeHtml(candidate.name()))
+                        .append(" <span class=\"muted\">pair=")
+                        .append(escapeHtml(formatScore(candidate.pairScore())))
+                        .append("</span></label>");
+            }
+            matchForm.append("<button type=\"submit\">Подтвердить дубликат</button></form>");
         }
 
+        String newCoasterAction;
         if (result.decision() == MatchDecision.NO_MATCH) {
-            return """
-                    <section class="subcard">
-                      <h3>Совпадение не найдено</h3>
-                      <p class="muted">Если это новый костер, можно сохранить текущие front/back без повторной съемки.</p>
-                      <form method="post" action="/web/add-from-check">
-                        <input name="draftId" type="hidden" value="%s">
-                        <label>Name
-                          <input name="name" type="text" placeholder="Например, Guinness Classic" required>
-                        </label>
-                        <button type="submit">Добавить по этим фото</button>
-                      </form>
-                    </section>
+            newCoasterAction = """
+                    <form method="post" action="/web/add-from-check">
+                      <input name="draftId" type="hidden" value="%s">
+                      <label>Если это новый костер, введите название
+                        <input name="name" type="text" placeholder="Например, Guinness Classic" required>
+                      </label>
+                      <button type="submit">Добавить как новый</button>
+                    </form>
+                    """.formatted(escapeHtml(draftId));
+        } else {
+            newCoasterAction = """
+                    <div class="actions">
+                      <a class="btn secondary" href="/web/add-from-check?draftId=%s">Это новый костер</a>
+                    </div>
                     """.formatted(escapeHtml(draftId));
         }
 
         return """
                 <section class="subcard">
-                  <h3>Не уверены, что это дубликат</h3>
-                  <p class="muted">Выберите, что делать дальше с этими фото.</p>
-                  <div class="actions">
-                    <a class="btn" href="/web/add-from-check?draftId=%s">Это новый костер</a>
-                    <a class="btn secondary" href="/web/check">Похоже, дубликат</a>
-                  </div>
+                  <h3>Подтвердите результат</h3>
+                  <p class="muted">Ответ поможет измерять реальные ошибки и точнее настроить поиск.</p>
+                  %s
+                  %s
                 </section>
-                """.formatted(escapeHtml(draftId));
+                """.formatted(matchForm, newCoasterAction);
     }
 
     private String renderAddedPage(String trimmedName, UUID id, String note) {
@@ -330,7 +411,10 @@ public class WebPagesController {
         ));
     }
 
-    private String storeCheckDraft(HttpSession session, byte[] frontBytes, byte[] backBytes) {
+    private String storeCheckDraft(HttpSession session,
+                                   MatchResultDto result,
+                                   byte[] frontBytes,
+                                   byte[] backBytes) {
         @SuppressWarnings("unchecked")
         Map<String, CheckDraft> drafts = (Map<String, CheckDraft>) session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
         if (drafts == null) {
@@ -339,7 +423,16 @@ public class WebPagesController {
         }
 
         String draftId = UUID.randomUUID().toString();
-        drafts.put(draftId, new CheckDraft(frontBytes, backBytes));
+        Set<UUID> candidateIds = new HashSet<>();
+        for (CandidateDto candidate : candidatesForDisplay(result)) {
+            candidateIds.add(candidate.coasterId());
+        }
+        drafts.put(draftId, new CheckDraft(
+                Objects.requireNonNull(result.checkRequestId(), "checkRequestId"),
+                frontBytes,
+                backBytes,
+                Set.copyOf(candidateIds)
+        ));
         return draftId;
     }
 
@@ -411,6 +504,11 @@ public class WebPagesController {
                 .replace("'", "&#39;");
     }
 
-    private record CheckDraft(byte[] frontBytes, byte[] backBytes) {
+    private record CheckDraft(
+            UUID checkRequestId,
+            byte[] frontBytes,
+            byte[] backBytes,
+            Set<UUID> candidateIds
+    ) {
     }
 }

@@ -1,100 +1,19 @@
 package org.avromanov.yesihave.application;
 
-import org.avromanov.yesihave.image.EmbeddingProperties;
-import org.avromanov.yesihave.image.ImageBytesNormalizer;
-import org.avromanov.yesihave.image.EmbeddingService;
-import org.avromanov.yesihave.persistence.CoasterWriteRepository;
-import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
-import org.avromanov.yesihave.persistence.MatchingRepository;
-import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.UUID;
 
 @Service
 public class DefaultAddCoasterUseCase implements AddCoasterUseCase {
-    private final ObjectStorageService objectStorageService;
-    private final CoasterWriteRepository coasterWriteRepository;
-    private final MatchingRepository matchingRepository;
-    private final EmbeddingVersionRepository embeddingVersionRepository;
-    private final EmbeddingService embeddingService;
-    private final EmbeddingProperties embeddingProperties;
-    private final ImageBytesNormalizer imageBytesNormalizer;
+    private final CoasterCreationService coasterCreationService;
 
-    public DefaultAddCoasterUseCase(ObjectStorageService objectStorageService,
-                                    CoasterWriteRepository coasterWriteRepository,
-                                    MatchingRepository matchingRepository,
-                                    EmbeddingVersionRepository embeddingVersionRepository,
-                                    EmbeddingService embeddingService,
-                                    EmbeddingProperties embeddingProperties,
-                                    ImageBytesNormalizer imageBytesNormalizer) {
-        this.objectStorageService = objectStorageService;
-        this.coasterWriteRepository = coasterWriteRepository;
-        this.matchingRepository = matchingRepository;
-        this.embeddingVersionRepository = embeddingVersionRepository;
-        this.embeddingService = embeddingService;
-        this.embeddingProperties = embeddingProperties;
-        this.imageBytesNormalizer = imageBytesNormalizer;
+    public DefaultAddCoasterUseCase(CoasterCreationService coasterCreationService) {
+        this.coasterCreationService = coasterCreationService;
     }
 
     @Override
-    @Transactional
     public UUID add(String name, byte[] frontImage, byte[] backImage) {
-        frontImage = normalize(frontImage);
-        backImage = normalize(backImage);
-        embeddingVersionRepository.requireActiveForWrite(embeddingProperties.modelVersion());
-
-        UUID coasterId = UUID.randomUUID();
-
-        String frontKey = objectStorageService.putImage("coasters/front", frontImage);
-        String backKey = objectStorageService.putImage("coasters/back", backImage);
-
-        coasterWriteRepository.insertCoaster(coasterId, name);
-        coasterWriteRepository.insertImage(
-                UUID.randomUUID(),
-                coasterId,
-                "FRONT",
-                frontKey,
-                sha256(frontImage)
-        );
-        coasterWriteRepository.insertImage(
-                UUID.randomUUID(),
-                coasterId,
-                "BACK",
-                backKey,
-                sha256(backImage)
-        );
-
-        float[] frontEmbedding = embeddingService.toEmbedding(frontImage);
-        float[] backEmbedding = embeddingService.toEmbedding(backImage);
-        matchingRepository.upsertEmbedding(
-                coasterId,
-                embeddingProperties.modelVersion(),
-                frontEmbedding,
-                backEmbedding
-        );
-
-        return coasterId;
-    }
-
-    private byte[] normalize(byte[] image) {
-        try {
-            return imageBytesNormalizer.normalize(image);
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("Failed to normalize image", e);
-        }
-    }
-
-    private String sha256(byte[] bytes) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(bytes));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        return coasterCreationService.create(name, frontImage, backImage, ignored -> { });
     }
 }

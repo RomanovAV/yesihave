@@ -142,6 +142,21 @@ During future rolling upgrades, old application instances continue reading
 their configured version, but writes are rejected after the active-version
 switch so that new coasters cannot be added to a retired pipeline.
 
+## PostgreSQL and MinIO write consistency
+
+Image normalization and embedding inference run before the short PostgreSQL
+write transaction. Successfully uploaded MinIO keys are tracked as one write
+batch. If a later upload, database statement, feedback write, or database
+rollback fails the operation, those objects are deleted in reverse order.
+
+This is compensation, not a distributed transaction. A process crash between
+the MinIO upload and PostgreSQL transaction, a failed compensation request, or
+an unknown database commit outcome can still leave an unreferenced MinIO
+object. Unknown commit outcomes deliberately retain objects, because deleting
+one could break a database row that actually committed. Cleanup failures and
+unknown outcomes are logged at `ERROR` and should be resolved by a periodic
+MinIO-versus-database reconciliation job before unattended production use.
+
 On a server without local Maven installed, use:
 
 ```bash
@@ -187,14 +202,31 @@ To inspect current score distribution in PostgreSQL, run:
 docker compose exec -T postgres psql -U yesihave -d yesihave < scripts/analyze-check-thresholds.sql
 ```
 
-## API stub
+The report starts with feedback coverage, then shows the prediction/actual
+matrix, precision, recall, candidate recall, and recent labeled mistakes. Do not
+retune thresholds from unlabeled score distributions alone.
+
+## API
 
 `POST /api/check` with `multipart/form-data`:
 
 - `front`: image file
 - `back`: image file
 
-Current implementation returns a stub `UNCERTAIN` response and a single mock candidate.
+The response contains the decision, scores, top candidates, and `checkRequestId`.
+Use that id to attach user-confirmed ground truth:
+
+```http
+POST /api/check/{checkRequestId}/feedback
+Content-Type: application/json
+
+{"verdict":"MATCH","coasterId":"<existing-coaster-uuid>"}
+```
+
+For a confirmed new coaster, send `{"verdict":"NO_MATCH"}`. If it has already
+been created through `/api/add`, its id may be attached as
+`{"verdict":"NO_MATCH","coasterId":"<new-coaster-uuid>"}`. Feedback is upserted
+per check, so an accidental answer can be corrected.
 
 `POST /api/add` with `multipart/form-data`:
 
@@ -214,6 +246,7 @@ The page includes:
 
 - check flow (`/api/check`) by uploading `front` + `back`
 - add flow (`/api/add`) by uploading `name` + `front` + `back`
+- ground-truth confirmation for a matching candidate or a newly added coaster
 
 For browser-only mode on server, keep `APP_TELEGRAM_TOKEN` empty.
 
@@ -256,4 +289,4 @@ sudo ufw status verbose
   - send `back` photo
   - send `name`
   - coaster and images are persisted in PostgreSQL + MinIO
-  - deterministic 512-d embedding is computed and stored in `coaster_embeddings`
+  - the configured versioned 512-d embedding is computed and stored in `coaster_embeddings`

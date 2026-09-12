@@ -9,6 +9,7 @@ public record MatchResultDto(
         Double scoreBack,
         Double pairScore,
         UUID matchedCoasterId,
-        List<CandidateDto> topCandidates
+        List<CandidateDto> topCandidates,
+        UUID checkRequestId
 ) {
 }
