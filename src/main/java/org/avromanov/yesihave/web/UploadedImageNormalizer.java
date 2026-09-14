@@ -18,6 +18,7 @@ public class UploadedImageNormalizer {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Файл не выбран.");
         }
+        imageBytesNormalizer.validateEncodedSize(file.getSize());
         return imageBytesNormalizer.normalize(file.getContentType(), file.getBytes());
     }
 }

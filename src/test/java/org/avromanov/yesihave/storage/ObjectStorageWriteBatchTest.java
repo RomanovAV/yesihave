@@ -7,6 +7,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -149,6 +150,16 @@ class ObjectStorageWriteBatchTest {
         @Override
         public void delete(String objectKey) {
             deleted.add(objectKey);
+        }
+
+        @Override
+        public void forEachObject(String prefix, Consumer<StoredObject> consumer) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean exists(String objectKey) {
+            throw new UnsupportedOperationException();
         }
     }
 }

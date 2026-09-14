@@ -68,4 +68,22 @@ public class CheckAuditRepository {
             );
         }
     }
+
+    public CheckImageKeys requireImageKeys(UUID checkRequestId) {
+        List<CheckImageKeys> keys = jdbcTemplate.query(
+                "SELECT front_image_key, back_image_key FROM check_requests WHERE id = ?",
+                (rs, rowNum) -> new CheckImageKeys(
+                        rs.getString("front_image_key"),
+                        rs.getString("back_image_key")
+                ),
+                checkRequestId
+        );
+        if (keys.isEmpty()) {
+            throw new IllegalArgumentException("Unknown check request: " + checkRequestId);
+        }
+        return keys.getFirst();
+    }
+
+    public record CheckImageKeys(String frontKey, String backKey) {
+    }
 }

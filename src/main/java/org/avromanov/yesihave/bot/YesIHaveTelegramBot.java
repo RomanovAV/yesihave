@@ -2,9 +2,15 @@ package org.avromanov.yesihave.bot;
 
 import org.avromanov.yesihave.application.AddCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
+import org.avromanov.yesihave.application.DuplicateCoasterException;
+import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
 import org.avromanov.yesihave.application.model.CandidateDto;
+import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchResultDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
@@ -13,27 +19,36 @@ import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnExpression("'${app.telegram.token:}'.length() > 0")
 public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSingleThreadUpdateConsumer {
+    private static final Logger log = LoggerFactory.getLogger(YesIHaveTelegramBot.class);
+
     private final TelegramProperties telegramProperties;
     private final TelegramApiClient telegramApiClient;
     private final CheckPairUseCase checkPairUseCase;
     private final AddCoasterUseCase addCoasterUseCase;
+    private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
     private final Map<Long, BotSession> sessions = new ConcurrentHashMap<>();
 
     public YesIHaveTelegramBot(TelegramProperties telegramProperties,
                                TelegramApiClient telegramApiClient,
                                CheckPairUseCase checkPairUseCase,
-                               AddCoasterUseCase addCoasterUseCase) {
+                               AddCoasterUseCase addCoasterUseCase,
+                               RecordCheckFeedbackUseCase recordCheckFeedbackUseCase) {
         this.telegramProperties = telegramProperties;
         this.telegramApiClient = telegramApiClient;
         this.checkPairUseCase = checkPairUseCase;
         this.addCoasterUseCase = addCoasterUseCase;
+        this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
     }
 
     @Override
@@ -48,6 +63,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
 
     @Override
     public void consume(Update update) {
+        purgeExpiredSessions();
         if (!update.hasMessage()) {
             return;
         }
@@ -71,21 +87,44 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             }
 
             telegramApiClient.sendMessage(chatId, "Пришлите команду /check или /add.");
+        } catch (DuplicateCoasterException e) {
+            sessions.remove(chatId);
+            telegramApiClient.sendMessage(
+                    chatId,
+                    "Такой бирдекель уже добавлен (id: " + e.existingCoasterId() + ")."
+            );
         } catch (Exception e) {
-            session.reset();
+            sessions.remove(chatId);
+            log.error("Telegram update processing failed for chat {}", chatId, e);
             telegramApiClient.sendMessage(chatId, "Произошла ошибка. Попробуйте снова с /check или /add.");
         }
     }
 
     private void handleText(Long chatId, String text, BotSession session) {
         if (text.startsWith("/start")) {
-            session.reset();
+            sessions.remove(chatId);
             telegramApiClient.sendMessage(chatId, "Привет. Используй /check для проверки и /add для добавления.");
             return;
         }
 
         if (text.startsWith("/help")) {
-            telegramApiClient.sendMessage(chatId, "/check - проверить по front/back\n/add - добавить новый бирдекель");
+            telegramApiClient.sendMessage(
+                    chatId,
+                    "/check - проверить по front/back\n"
+                            + "/add - добавить новый бирдекель\n"
+                            + "/match <id> - подтвердить найденный дубликат\n"
+                            + "/new - подтвердить, что совпадения нет"
+            );
+            return;
+        }
+
+        if (text.startsWith("/match")) {
+            handleMatchFeedback(chatId, text, session);
+            return;
+        }
+
+        if (text.equals("/new")) {
+            handleNoMatchFeedback(chatId, session);
             return;
         }
 
@@ -108,7 +147,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         if (session.action() == BotAction.ADD && session.state() == TelegramSessionState.WAIT_NAME) {
             String name = text.isBlank() ? "Unnamed coaster" : text;
             var coasterId = addCoasterUseCase.add(name, session.frontImage(), session.backImage());
-            session.reset();
+            sessions.remove(chatId);
             telegramApiClient.sendMessage(chatId, "Добавлено: " + name + " (id: " + coasterId + ").");
             return;
         }
@@ -139,8 +178,17 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         session.setBackImage(bytes);
         if (session.action() == BotAction.CHECK) {
             MatchResultDto result = checkPairUseCase.check(chatId, session.frontImage(), session.backImage());
-            session.reset();
-            telegramApiClient.sendMessage(chatId, formatMatchResult(result));
+            Set<UUID> candidateIds = result.topCandidates() == null
+                    ? Set.of()
+                    : result.topCandidates().stream()
+                            .map(CandidateDto::coasterId)
+                            .collect(Collectors.toUnmodifiableSet());
+            session.prepareFeedback(result.checkRequestId(), candidateIds);
+            telegramApiClient.sendMessage(
+                    chatId,
+                    formatMatchResult(result)
+                            + "\n\nПодтверди результат: /match <id> или /new."
+            );
             return;
         }
 
@@ -174,6 +222,60 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                     .append('\n');
         }
         return builder.toString().trim();
+    }
+
+    private void handleMatchFeedback(Long chatId, String text, BotSession session) {
+        if (session.state() != TelegramSessionState.WAIT_FEEDBACK) {
+            telegramApiClient.sendMessage(chatId, "Сначала выполни /check.");
+            return;
+        }
+        String[] parts = text.split("\\s+", 2);
+        if (parts.length != 2) {
+            telegramApiClient.sendMessage(chatId, "Укажи id: /match <id>.");
+            return;
+        }
+
+        UUID coasterId;
+        try {
+            coasterId = UUID.fromString(parts[1].trim());
+        } catch (IllegalArgumentException e) {
+            telegramApiClient.sendMessage(chatId, "Некорректный id кандидата.");
+            return;
+        }
+        if (!session.candidateIds().contains(coasterId)) {
+            telegramApiClient.sendMessage(chatId, "Этот id не входил в кандидаты последней проверки.");
+            return;
+        }
+
+        recordCheckFeedbackUseCase.confirmMatch(
+                session.checkRequestId(),
+                coasterId,
+                FeedbackSource.TELEGRAM
+        );
+        sessions.remove(chatId);
+        telegramApiClient.sendMessage(chatId, "Спасибо, совпадение подтверждено.");
+    }
+
+    private void handleNoMatchFeedback(Long chatId, BotSession session) {
+        if (session.state() != TelegramSessionState.WAIT_FEEDBACK) {
+            telegramApiClient.sendMessage(chatId, "Сначала выполни /check.");
+            return;
+        }
+        recordCheckFeedbackUseCase.confirmNoMatch(
+                session.checkRequestId(),
+                null,
+                FeedbackSource.TELEGRAM
+        );
+        sessions.remove(chatId);
+        telegramApiClient.sendMessage(chatId, "Спасибо, отсутствие совпадения подтверждено.");
+    }
+
+    @Scheduled(fixedDelayString = "${app.telegram.session-cleanup-interval:1m}")
+    void purgeExpiredSessions() {
+        Instant now = Instant.now();
+        sessions.entrySet().removeIf(entry ->
+                entry.getValue().isExpired(now, telegramProperties.sessionTtl())
+        );
     }
 
     private String formatScore(Double score) {

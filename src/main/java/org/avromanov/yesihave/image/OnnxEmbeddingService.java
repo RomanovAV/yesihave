@@ -86,27 +86,27 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
     private float[] extractEmbedding(Object value) {
         if (value instanceof float[][] batch && batch.length > 0) {
-            return toFixedDim(batch[0], dimension);
+            return requireDimension(batch[0], dimension);
         }
         if (value instanceof float[] vector) {
-            return toFixedDim(vector, dimension);
+            return requireDimension(vector, dimension);
         }
         if (value instanceof FloatBuffer floatBuffer) {
             float[] data = new float[floatBuffer.remaining()];
             floatBuffer.get(data);
-            return toFixedDim(data, dimension);
+            return requireDimension(data, dimension);
         }
         throw new IllegalStateException("Unsupported ONNX output type: " + value.getClass().getName());
     }
 
-    private float[] toFixedDim(float[] source, int targetDim) {
-        if (source.length == targetDim) {
-            return source;
+    private float[] requireDimension(float[] source, int targetDim) {
+        if (source.length != targetDim) {
+            throw new IllegalStateException(
+                    "ONNX output dimension %d does not match configured dimension %d"
+                            .formatted(source.length, targetDim)
+            );
         }
-        float[] result = new float[targetDim];
-        int len = Math.min(source.length, targetDim);
-        System.arraycopy(source, 0, result, 0, len);
-        return result;
+        return source;
     }
 
     private float[] normalize(float[] vector) {

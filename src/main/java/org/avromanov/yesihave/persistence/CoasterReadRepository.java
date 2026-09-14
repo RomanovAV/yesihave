@@ -14,25 +14,9 @@ public class CoasterReadRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<CoasterImagePair> findAllPairs() {
-        return jdbcTemplate.query(
-                """
-                SELECT c.id,
-                       f.object_key AS front_key,
-                       b.object_key AS back_key
-                FROM coasters c
-                JOIN coaster_images f ON f.coaster_id = c.id AND f.side = 'FRONT'
-                JOIN coaster_images b ON b.coaster_id = c.id AND b.side = 'BACK'
-                """,
-                (rs, rowNum) -> new CoasterImagePair(
-                        UUID.fromString(rs.getString("id")),
-                        rs.getString("front_key"),
-                        rs.getString("back_key")
-                )
-        );
-    }
-
-    public List<CoasterImagePair> findPairsNeedingReindex(String modelVersion) {
+    public List<CoasterImagePair> findPairsNeedingReindex(String modelVersion,
+                                                          UUID afterCoasterId,
+                                                          int limit) {
         return jdbcTemplate.query(
                 """
                 SELECT c.id,
@@ -44,13 +28,19 @@ public class CoasterReadRepository {
                 LEFT JOIN coaster_embeddings ce
                   ON ce.coaster_id = c.id AND ce.model_version = ?
                 WHERE ce.coaster_id IS NULL
+                  AND (?::uuid IS NULL OR c.id > ?::uuid)
+                ORDER BY c.id
+                LIMIT ?
                 """,
                 (rs, rowNum) -> new CoasterImagePair(
                         UUID.fromString(rs.getString("id")),
                         rs.getString("front_key"),
                         rs.getString("back_key")
                 ),
-                modelVersion
+                modelVersion,
+                afterCoasterId,
+                afterCoasterId,
+                limit
         );
     }
 

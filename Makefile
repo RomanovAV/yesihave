@@ -1,8 +1,11 @@
-.PHONY: up down logs ps infra-up infra-down test test-integration reindex export-model
+.PHONY: up public-up down logs ps infra-up infra-down test test-integration reindex export-model
 COMPOSE := docker compose
 
 up:
 	$(COMPOSE) up --build
+
+public-up:
+	$(COMPOSE) --profile public up --build
 
 down:
 	$(COMPOSE) down

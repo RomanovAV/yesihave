@@ -59,6 +59,18 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: coasters
       APP_TELEGRAM_TOKEN: ${APP_TELEGRAM_TOKEN:-}
+      APP_TELEGRAM_SESSION_TTL: ${APP_TELEGRAM_SESSION_TTL:-15m}
+      APP_TELEGRAM_SESSION_CLEANUP_INTERVAL: ${APP_TELEGRAM_SESSION_CLEANUP_INTERVAL:-1m}
+      APP_IMAGE_MAX_FILE_BYTES: ${APP_IMAGE_MAX_FILE_BYTES:-10485760}
+      APP_IMAGE_MAX_PIXELS: ${APP_IMAGE_MAX_PIXELS:-13000000}
+      APP_IMAGE_MAX_DIMENSION: ${APP_IMAGE_MAX_DIMENSION:-6000}
+      APP_IMAGE_MAX_CONCURRENT_REQUESTS: ${APP_IMAGE_MAX_CONCURRENT_REQUESTS:-2}
+      APP_STORAGE_RECONCILIATION_ENABLED: ${APP_STORAGE_RECONCILIATION_ENABLED:-true}
+      APP_STORAGE_DELETE_ORPHANS: ${APP_STORAGE_DELETE_ORPHANS:-true}
+      APP_STORAGE_ORPHAN_GRACE_PERIOD: ${APP_STORAGE_ORPHAN_GRACE_PERIOD:-24h}
+      APP_STORAGE_REFERENCE_BATCH_SIZE: ${APP_STORAGE_REFERENCE_BATCH_SIZE:-500}
+      APP_STORAGE_RECONCILIATION_INITIAL_DELAY: ${APP_STORAGE_RECONCILIATION_INITIAL_DELAY:-5m}
+      APP_STORAGE_RECONCILIATION_INTERVAL: ${APP_STORAGE_RECONCILIATION_INTERVAL:-24h}
       APP_EMBEDDING_PROVIDER: ${APP_EMBEDDING_PROVIDER:-onnx}
       APP_EMBEDDING_DIMENSION: ${APP_EMBEDDING_DIMENSION:-512}
       APP_ONNX_MODEL_PATH: ${APP_ONNX_MODEL_PATH:-/app/models/clip-vitb32.onnx}
@@ -68,6 +80,11 @@ services:
       APP_EMBEDDING_REQUIRE_ACTIVE_VERSION: "true"
     volumes:
       - ./models:/app/models:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    security_opt:
+      - no-new-privileges:true
 
   reindex:
     image: maven:3.9.9-eclipse-temurin-21
@@ -90,6 +107,11 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: coasters
       APP_TELEGRAM_TOKEN: ${APP_TELEGRAM_TOKEN:-}
+      APP_IMAGE_MAX_FILE_BYTES: ${APP_IMAGE_MAX_FILE_BYTES:-10485760}
+      APP_IMAGE_MAX_PIXELS: ${APP_IMAGE_MAX_PIXELS:-13000000}
+      APP_IMAGE_MAX_DIMENSION: ${APP_IMAGE_MAX_DIMENSION:-6000}
+      APP_IMAGE_MAX_CONCURRENT_REQUESTS: ${APP_IMAGE_MAX_CONCURRENT_REQUESTS:-2}
+      APP_STORAGE_RECONCILIATION_ENABLED: "false"
       APP_EMBEDDING_PROVIDER: ${APP_REINDEX_EMBEDDING_PROVIDER:-onnx}
       APP_EMBEDDING_DIMENSION: ${APP_REINDEX_EMBEDDING_DIMENSION:-512}
       APP_ONNX_MODEL_PATH: ${APP_REINDEX_ONNX_MODEL_PATH:-/workspace/models/clip-vitb32.onnx}
@@ -107,10 +129,24 @@ services:
     depends_on:
       - app
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+
+  nginx-tls:
+    image: nginx:1.27-alpine
+    container_name: yesihave-nginx-tls
+    profiles: ["public"]
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+      - ${TLS_CERT_DIR:-./nginx/tls}:/etc/nginx/tls:ro
 
 volumes:
   pg_data:

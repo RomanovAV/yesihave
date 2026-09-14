@@ -11,9 +11,12 @@ import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ReindexEmbeddingsService {
+    private static final int BATCH_SIZE = 100;
+
     private final CoasterReadRepository coasterReadRepository;
     private final ObjectStorageService objectStorageService;
     private final EmbeddingService embeddingService;
@@ -41,23 +44,34 @@ public class ReindexEmbeddingsService {
     public int reindexAll() {
         EmbeddingPipelineDescriptor descriptor = descriptorProvider.descriptor();
         embeddingVersionRepository.beginBuild(descriptor);
-        List<CoasterReadRepository.CoasterImagePair> pairs =
-                coasterReadRepository.findPairsNeedingReindex(descriptor.modelVersion());
         int processed = 0;
-        for (CoasterReadRepository.CoasterImagePair pair : pairs) {
-            byte[] frontBytes = normalize(objectStorageService.getBytes(pair.frontKey()));
-            byte[] backBytes = normalize(objectStorageService.getBytes(pair.backKey()));
+        UUID afterCoasterId = null;
+        while (true) {
+            List<CoasterReadRepository.CoasterImagePair> pairs =
+                    coasterReadRepository.findPairsNeedingReindex(
+                            descriptor.modelVersion(),
+                            afterCoasterId,
+                            BATCH_SIZE
+                    );
+            if (pairs.isEmpty()) {
+                break;
+            }
+            for (CoasterReadRepository.CoasterImagePair pair : pairs) {
+                byte[] frontBytes = normalize(objectStorageService.getBytes(pair.frontKey()));
+                byte[] backBytes = normalize(objectStorageService.getBytes(pair.backKey()));
 
-            float[] frontEmbedding = embeddingService.toEmbedding(frontBytes);
-            float[] backEmbedding = embeddingService.toEmbedding(backBytes);
+                float[] frontEmbedding = embeddingService.toEmbedding(frontBytes);
+                float[] backEmbedding = embeddingService.toEmbedding(backBytes);
 
-            matchingRepository.upsertEmbedding(
-                    pair.coasterId(),
-                    descriptor.modelVersion(),
-                    frontEmbedding,
-                    backEmbedding
-            );
-            processed++;
+                matchingRepository.upsertEmbedding(
+                        pair.coasterId(),
+                        descriptor.modelVersion(),
+                        frontEmbedding,
+                        backEmbedding
+                );
+                processed++;
+            }
+            afterCoasterId = pairs.getLast().coasterId();
         }
         embeddingVersionRepository.activate(descriptor);
         return processed;

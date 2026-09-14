@@ -6,8 +6,6 @@ import java.util.UUID;
 
 public interface AddCheckedCoasterUseCase {
     UUID add(String name,
-             byte[] frontImage,
-             byte[] backImage,
              UUID checkRequestId,
              FeedbackSource source);
 }

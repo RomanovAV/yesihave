@@ -14,7 +14,11 @@ RUN apt-get update \
       imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/target/*.jar /app/app.jar
+RUN groupadd --system yesihave \
+    && useradd --system --gid yesihave --home-dir /app --shell /usr/sbin/nologin yesihave
+
+COPY --from=build --chown=yesihave:yesihave /app/target/*.jar /app/app.jar
 EXPOSE 8080
 
+USER yesihave
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

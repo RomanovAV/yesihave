@@ -15,11 +15,17 @@ MVP skeleton for a Java Telegram bot that checks whether a coaster is already in
 
 - `src/main/java/org/avromanov/yesihave/bot` - Telegram interaction layer
 - `src/main/java/org/avromanov/yesihave/application` - use-cases and DTOs
-- `src/main/java/org/avromanov/yesihave/image` - embedding pipeline (currently stub)
+- `src/main/java/org/avromanov/yesihave/image` - image validation and versioned embedding pipeline
 - `src/main/java/org/avromanov/yesihave/storage` - object storage config
 - `src/main/resources/db/migration` - Flyway SQL migrations
 
 ## Run locally (Docker)
+
+Create the local Basic Auth password file once (it is ignored by Git):
+
+```bash
+docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'CHANGE_ME' > nginx/htpasswd
+```
 
 ```bash
 docker compose up --build
@@ -35,30 +41,40 @@ After startup:
 If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
 If token is empty, app still starts and web/API mode works without Telegram.
 
-## Protect web/API with Basic Auth (nginx)
+Copy `.env.example` to `.env` for local overrides. `.env` is deliberately not
+tracked by Git.
 
-This repository includes an optional nginx reverse-proxy with Basic Auth.
-When enabled, **all** app endpoints require authorization (`/`, `/web/*`, `/api/*`, `/actuator/*`).
+## Public HTTPS with Basic Auth
 
-1) Create password file (do not commit it):
+The default nginx endpoint is HTTP on `127.0.0.1:8080` only and cannot be
+reached directly from another host. Public access uses a separate TLS profile;
+all endpoints then require Basic Auth (`/`, `/web/*`, `/api/*`, `/actuator/*`).
+
+1) Reuse the local password file above, or rotate it before exposing the app:
 
 ```bash
 mkdir -p nginx
 docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'CHANGE_ME' > nginx/htpasswd
 ```
 
-2) Start:
+2) Put the certificate and private key at `nginx/tls/fullchain.pem` and
+`nginx/tls/privkey.pem`. They are ignored by Git. To mount another directory,
+set `TLS_CERT_DIR`.
+
+3) Start the public profile:
 
 ```bash
-docker compose up -d --build
+make public-up
 ```
 
-3) Open `http://<server>:8080/` and use credentials you generated.
+4) Open `https://<server>/` and use the generated credentials. Port 80 only
+redirects to HTTPS. Upload routes are rate-limited at the proxy.
 
 ## Convenience targets
 
 ```bash
 make up
+make public-up
 make down
 make logs
 make test
@@ -142,6 +158,9 @@ During future rolling upgrades, old application instances continue reading
 their configured version, but writes are rejected after the active-version
 switch so that new coasters cannot be added to a retired pipeline.
 
+Reindex reads coaster keys in keyset-paginated batches and keeps only one batch
+plus the current image pair in memory.
+
 ## PostgreSQL and MinIO write consistency
 
 Image normalization and embedding inference run before the short PostgreSQL
@@ -149,13 +168,22 @@ write transaction. Successfully uploaded MinIO keys are tracked as one write
 batch. If a later upload, database statement, feedback write, or database
 rollback fails the operation, those objects are deleted in reverse order.
 
-This is compensation, not a distributed transaction. A process crash between
-the MinIO upload and PostgreSQL transaction, a failed compensation request, or
-an unknown database commit outcome can still leave an unreferenced MinIO
-object. Unknown commit outcomes deliberately retain objects, because deleting
-one could break a database row that actually committed. Cleanup failures and
-unknown outcomes are logged at `ERROR` and should be resolved by a periodic
-MinIO-versus-database reconciliation job before unattended production use.
+This is compensation, not a distributed transaction. Unknown commit outcomes
+deliberately retain objects, because deleting one could break a database row
+that actually committed. A scheduled reconciliation scans only `coasters/` and
+`checks/`, deletes unreferenced objects after a 24-hour grace period, and logs
+database references whose MinIO objects are missing. Its interval, grace period,
+and deletion mode are configurable through `APP_STORAGE_RECONCILIATION_*`.
+
+## Image resource limits
+
+Every web, API, Telegram, and reindex image is validated before decoding. The
+defaults are 10 MB encoded size, 13 megapixels, and 6000 pixels on either side.
+HEIC conversion has a 30-second timeout and bounded process output. Override the
+limits with `APP_IMAGE_MAX_FILE_BYTES`, `APP_IMAGE_MAX_PIXELS`, and
+`APP_IMAGE_MAX_DIMENSION` only after sizing the JVM accordingly. At most two
+HTTP image requests are processed concurrently by default; configure this with
+`APP_IMAGE_MAX_CONCURRENT_REQUESTS`.
 
 On a server without local Maven installed, use:
 
@@ -236,6 +264,11 @@ per check, so an accidental answer can be corrected.
 
 Returns JSON with created coaster id.
 
+An exact retry or double submission is rejected with HTTP `409` and the
+existing coaster id. The uniqueness claim is stored in PostgreSQL and is safe
+against concurrent requests. Different photographs of the same physical
+coaster still require the normal `/check` flow.
+
 ## Web UI (browser mode)
 
 Open:
@@ -257,7 +290,8 @@ By default in this compose setup:
 - PostgreSQL (`5432`) is bound to `127.0.0.1` only
 - MinIO API (`9000`) is bound to `127.0.0.1` only
 - MinIO console (`9001`) is bound to `127.0.0.1` only
-- App (`8080`) is public (for browser access)
+- Local nginx (`8080`) is bound to `127.0.0.1` only
+- Public TLS profile exposes only redirect port `80` and HTTPS port `443`
 
 Check listening ports:
 
@@ -272,7 +306,8 @@ Optional firewall (Ubuntu UFW):
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow OpenSSH
-sudo ufw allow 8080/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw enable
 sudo ufw status verbose
 ```
@@ -283,6 +318,7 @@ sudo ufw status verbose
   - send `front` photo
   - send `back` photo
   - receive match decision + top candidates
+  - confirm ground truth with `/match <candidate-id>` or `/new`
   - request audit is stored in `check_requests` and `check_candidates`
 - `/add`:
   - send `front` photo
@@ -290,3 +326,6 @@ sudo ufw status verbose
   - send `name`
   - coaster and images are persisted in PostgreSQL + MinIO
   - the configured versioned 512-d embedding is computed and stored in `coaster_embeddings`
+
+Abandoned Telegram sessions expire after 15 minutes; completed sessions release
+their photo buffers immediately.

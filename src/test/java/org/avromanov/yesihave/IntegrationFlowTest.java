@@ -7,6 +7,7 @@ import io.minio.messages.Item;
 import org.avromanov.yesihave.application.AddCheckedCoasterUseCase;
 import org.avromanov.yesihave.application.AddCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
+import org.avromanov.yesihave.application.DuplicateCoasterException;
 import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
 import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchDecision;
@@ -28,6 +29,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import javax.imageio.ImageIO;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,8 +105,8 @@ class IntegrationFlowTest {
 
     @Test
     void addThenCheckReturnsMatch() throws Exception {
-        byte[] front = new byte[]{1, 2, 3, 4, 5};
-        byte[] back = new byte[]{9, 8, 7, 6, 5};
+        byte[] front = png(Color.RED);
+        byte[] back = png(Color.BLUE);
 
         UUID coasterId = addCoasterUseCase.add("Test Coaster", front, back);
         MatchResultDto result = checkPairUseCase.check(42L, front, back);
@@ -132,13 +137,11 @@ class IntegrationFlowTest {
         long storedCoasterObjects = countObjects("coasters/");
         assertThatThrownBy(() -> addCheckedCoasterUseCase.add(
                 "Must roll back",
-                new byte[]{10, 11, 12},
-                new byte[]{13, 14, 15},
-                UUID.randomUUID(),
-                FeedbackSource.API
+                result.checkRequestId(),
+                null
         ))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown check request");
+                .isInstanceOf(DuplicateCoasterException.class)
+                .hasMessageContaining(coasterId.toString());
         assertThat(countObjects("coasters/")).isEqualTo(storedCoasterObjects);
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM coasters WHERE name = 'Must roll back'",
@@ -193,6 +196,16 @@ class IntegrationFlowTest {
         assertThat(activeVersion).isEqualTo("test-v2");
         assertThatThrownBy(() -> embeddingVersionRepository.requireActiveForWrite("test-v1"))
                 .isInstanceOf(IllegalStateException.class);
+
+        long objectsBeforeInactiveWrite = countObjects("coasters/");
+        assertThatThrownBy(() -> addCoasterUseCase.add(
+                "Inactive version must roll back",
+                png(Color.GREEN),
+                png(Color.YELLOW)
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no longer active");
+        assertThat(countObjects("coasters/")).isEqualTo(objectsBeforeInactiveWrite);
     }
 
     private long countObjects(String prefix) throws Exception {
@@ -209,5 +222,17 @@ class IntegrationFlowTest {
             count++;
         }
         return count;
+    }
+
+    private byte[] png(Color color) throws Exception {
+        BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        graphics.setColor(color);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        graphics.dispose();
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "png", output);
+            return output.toByteArray();
+        }
     }
 }

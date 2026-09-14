@@ -1,5 +1,6 @@
 package org.avromanov.yesihave.persistence;
 
+import org.avromanov.yesihave.application.DuplicateCoasterException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -40,5 +41,27 @@ public class CoasterWriteRepository {
                 sha256,
                 OffsetDateTime.now()
         );
+    }
+
+    public void claimImagePair(String imagePairKey, UUID coasterId) {
+        int inserted = jdbcTemplate.update(
+                """
+                INSERT INTO coaster_image_pairs(image_pair_key, coaster_id)
+                VALUES (?, ?)
+                ON CONFLICT (image_pair_key) DO NOTHING
+                """,
+                imagePairKey,
+                coasterId
+        );
+        if (inserted == 1) {
+            return;
+        }
+
+        UUID existingCoasterId = jdbcTemplate.queryForObject(
+                "SELECT coaster_id FROM coaster_image_pairs WHERE image_pair_key = ?",
+                UUID.class,
+                imagePairKey
+        );
+        throw new DuplicateCoasterException(existingCoasterId);
     }
 }

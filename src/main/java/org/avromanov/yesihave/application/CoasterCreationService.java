@@ -52,9 +52,19 @@ public class CoasterCreationService {
                        byte[] backImage,
                        Consumer<UUID> afterPersist) {
         Objects.requireNonNull(afterPersist, "afterPersist");
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.isBlank()) {
+            throw new IllegalArgumentException("Coaster name must not be blank");
+        }
+        if (normalizedName.length() > 200) {
+            throw new IllegalArgumentException("Coaster name must not exceed 200 characters");
+        }
 
         byte[] normalizedFront = normalize(frontImage);
         byte[] normalizedBack = normalize(backImage);
+        String frontSha256 = sha256(normalizedFront);
+        String backSha256 = sha256(normalizedBack);
+        String imagePairKey = imagePairKey(frontSha256, backSha256);
         float[] frontEmbedding = embeddingService.toEmbedding(normalizedFront);
         float[] backEmbedding = embeddingService.toEmbedding(normalizedBack);
         UUID coasterId = UUID.randomUUID();
@@ -66,21 +76,22 @@ public class CoasterCreationService {
             UUID result = transactionTemplate.execute(status -> {
                 uploads.registerRollbackCleanup();
                 embeddingVersionRepository.requireActiveForWrite(embeddingProperties.modelVersion());
-                coasterWriteRepository.insertCoaster(coasterId, name);
+                coasterWriteRepository.insertCoaster(coasterId, normalizedName);
                 coasterWriteRepository.insertImage(
                         UUID.randomUUID(),
                         coasterId,
                         "FRONT",
                         frontKey,
-                        sha256(normalizedFront)
+                        frontSha256
                 );
                 coasterWriteRepository.insertImage(
                         UUID.randomUUID(),
                         coasterId,
                         "BACK",
                         backKey,
-                        sha256(normalizedBack)
+                        backSha256
                 );
+                coasterWriteRepository.claimImagePair(imagePairKey, coasterId);
                 matchingRepository.upsertEmbedding(
                         coasterId,
                         embeddingProperties.modelVersion(),
@@ -109,5 +120,12 @@ public class CoasterCreationService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    private String imagePairKey(String frontSha256, String backSha256) {
+        if (frontSha256.compareTo(backSha256) <= 0) {
+            return frontSha256 + ":" + backSha256;
+        }
+        return backSha256 + ":" + frontSha256;
     }
 }

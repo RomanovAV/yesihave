@@ -1,6 +1,8 @@
 package org.avromanov.yesihave.application;
 
 import org.avromanov.yesihave.application.model.FeedbackSource;
+import org.avromanov.yesihave.persistence.CheckAuditRepository;
+import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -9,19 +11,26 @@ import java.util.UUID;
 public class DefaultAddCheckedCoasterUseCase implements AddCheckedCoasterUseCase {
     private final CoasterCreationService coasterCreationService;
     private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
+    private final CheckAuditRepository checkAuditRepository;
+    private final ObjectStorageService objectStorageService;
 
     public DefaultAddCheckedCoasterUseCase(CoasterCreationService coasterCreationService,
-                                           RecordCheckFeedbackUseCase recordCheckFeedbackUseCase) {
+                                           RecordCheckFeedbackUseCase recordCheckFeedbackUseCase,
+                                           CheckAuditRepository checkAuditRepository,
+                                           ObjectStorageService objectStorageService) {
         this.coasterCreationService = coasterCreationService;
         this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
+        this.checkAuditRepository = checkAuditRepository;
+        this.objectStorageService = objectStorageService;
     }
 
     @Override
     public UUID add(String name,
-                    byte[] frontImage,
-                    byte[] backImage,
                     UUID checkRequestId,
                     FeedbackSource source) {
+        CheckAuditRepository.CheckImageKeys imageKeys = checkAuditRepository.requireImageKeys(checkRequestId);
+        byte[] frontImage = objectStorageService.getBytes(imageKeys.frontKey());
+        byte[] backImage = objectStorageService.getBytes(imageKeys.backKey());
         return coasterCreationService.create(
                 name,
                 frontImage,

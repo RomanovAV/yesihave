@@ -9,6 +9,7 @@ import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
+import org.avromanov.yesihave.image.ImageProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -37,7 +38,9 @@ class WebPagesControllerTest {
 
     @BeforeEach
     void setUp() {
-        UploadedImageNormalizer uploadedImageNormalizer = new UploadedImageNormalizer(new ImageBytesNormalizer()) {
+        UploadedImageNormalizer uploadedImageNormalizer = new UploadedImageNormalizer(new ImageBytesNormalizer(
+                new ImageProperties(10 * 1024 * 1024, 13_000_000, 6_000, 2)
+        )) {
             @Override
             public byte[] normalizeToJpegIfHeic(org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
                 return file.getBytes();
@@ -62,7 +65,7 @@ class WebPagesControllerTest {
         AddCoasterUseCase addCoasterUseCase =
                 (name, frontImage, backImage) -> UUID.fromString("00000000-0000-0000-0000-000000000002");
         AddCheckedCoasterUseCase addCheckedCoasterUseCase =
-                (name, frontImage, backImage, checkRequestId, source) ->
+                (name, checkRequestId, source) ->
                         UUID.fromString("00000000-0000-0000-0000-000000000002");
         feedback = new RecordingFeedbackUseCase();
 
@@ -184,6 +187,29 @@ class WebPagesControllerTest {
         org.assertj.core.api.Assertions.assertThat(feedback.coasterId)
                 .isEqualTo(UUID.fromString("00000000-0000-0000-0000-000000000001"));
         org.assertj.core.api.Assertions.assertThat(feedback.source).isEqualTo(FeedbackSource.WEB);
+    }
+
+    @Test
+    void newerCheckEvictsOlderSessionDraft() throws Exception {
+        MvcResult first = mvc.perform(multipart("/web/check")
+                        .file(new MockMultipartFile("front", "front.jpg", "image/jpeg", new byte[]{1}))
+                        .file(new MockMultipartFile("back", "back.jpg", "image/jpeg", new byte[]{2})))
+                .andExpect(status().isOk())
+                .andReturn();
+        String oldDraftId = extractDraftId(first.getResponse().getContentAsString());
+        MockHttpSession session = (MockHttpSession) first.getRequest().getSession(false);
+
+        mvc.perform(multipart("/web/check")
+                        .file(new MockMultipartFile("front", "front.jpg", "image/jpeg", new byte[]{3}))
+                        .file(new MockMultipartFile("back", "back.jpg", "image/jpeg", new byte[]{4}))
+                        .session(session))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/web/add-from-check")
+                        .session(session)
+                        .param("draftId", oldDraftId))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Черновик не найден")));
     }
 
     private String extractDraftId(String html) {

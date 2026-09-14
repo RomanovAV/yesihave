@@ -8,6 +8,8 @@ import org.avromanov.yesihave.application.model.CandidateDto;
 import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,16 +20,15 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 @RestController
 public class WebPagesController {
+    private static final Logger log = LoggerFactory.getLogger(WebPagesController.class);
     private static final long WEB_USER_ID = 0L;
     private static final String CHECK_DRAFTS_SESSION_KEY = "webCheckDrafts";
     private static final int UNCERTAIN_WEB_CANDIDATE_LIMIT = 3;
@@ -95,10 +96,11 @@ public class WebPagesController {
             byte[] backBytes = uploadedImageNormalizer.normalizeToJpegIfHeic(back);
 
             MatchResultDto result = checkPairUseCase.check(WEB_USER_ID, frontBytes, backBytes);
-            return renderCheckResult(result, storeCheckDraft(session, result, frontBytes, backBytes));
+            return renderCheckResult(result, storeCheckDraft(session, result));
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка ввода", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
         } catch (Exception e) {
+            log.error("Web check failed", e);
             return errorPage("Ошибка", "Произошла ошибка обработки. Попробуйте другое фото.", "/web/check");
         }
     }
@@ -158,6 +160,7 @@ public class WebPagesController {
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка ввода", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/add");
         } catch (Exception e) {
+            log.error("Web add failed", e);
             return errorPage("Ошибка", "Произошла ошибка добавления. Попробуйте снова.", "/web/add");
         }
     }
@@ -179,8 +182,6 @@ public class WebPagesController {
 
             UUID id = addCheckedCoasterUseCase.add(
                     trimmedName,
-                    draft.frontBytes(),
-                    draft.backBytes(),
                     draft.checkRequestId(),
                     FeedbackSource.WEB
             );
@@ -189,6 +190,7 @@ public class WebPagesController {
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка ввода", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
         } catch (Exception e) {
+            log.error("Web add-from-check failed for draft {}", draftId, e);
             return errorPage("Ошибка", "Произошла ошибка добавления. Попробуйте снова.", "/web/check");
         }
     }
@@ -229,6 +231,7 @@ public class WebPagesController {
         } catch (IllegalArgumentException e) {
             return errorPage("Ошибка подтверждения", Objects.toString(e.getMessage(), "Некорректный ввод."), "/web/check");
         } catch (Exception e) {
+            log.error("Web feedback failed for draft {}", draftId, e);
             return errorPage("Ошибка", "Не удалось сохранить подтверждение. Попробуйте снова.", "/web/check");
         }
     }
@@ -412,44 +415,34 @@ public class WebPagesController {
     }
 
     private String storeCheckDraft(HttpSession session,
-                                   MatchResultDto result,
-                                   byte[] frontBytes,
-                                   byte[] backBytes) {
-        @SuppressWarnings("unchecked")
-        Map<String, CheckDraft> drafts = (Map<String, CheckDraft>) session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
-        if (drafts == null) {
-            drafts = new HashMap<>();
-            session.setAttribute(CHECK_DRAFTS_SESSION_KEY, drafts);
-        }
-
+                                   MatchResultDto result) {
         String draftId = UUID.randomUUID().toString();
         Set<UUID> candidateIds = new HashSet<>();
         for (CandidateDto candidate : candidatesForDisplay(result)) {
             candidateIds.add(candidate.coasterId());
         }
-        drafts.put(draftId, new CheckDraft(
+        session.setAttribute(CHECK_DRAFTS_SESSION_KEY, new CheckDraft(
+                draftId,
                 Objects.requireNonNull(result.checkRequestId(), "checkRequestId"),
-                frontBytes,
-                backBytes,
                 Set.copyOf(candidateIds)
         ));
         return draftId;
     }
 
     private CheckDraft getCheckDraft(HttpSession session, String draftId) {
-        @SuppressWarnings("unchecked")
-        Map<String, CheckDraft> drafts = (Map<String, CheckDraft>) session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
-        if (drafts == null || draftId == null || draftId.isBlank()) {
+        Object storedDraft = session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
+        if (!(storedDraft instanceof CheckDraft draft)
+                || draftId == null
+                || !draft.draftId().equals(draftId)) {
             return null;
         }
-        return drafts.get(draftId);
+        return draft;
     }
 
     private void removeCheckDraft(HttpSession session, String draftId) {
-        @SuppressWarnings("unchecked")
-        Map<String, CheckDraft> drafts = (Map<String, CheckDraft>) session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
-        if (drafts != null && draftId != null) {
-            drafts.remove(draftId);
+        Object storedDraft = session.getAttribute(CHECK_DRAFTS_SESSION_KEY);
+        if (storedDraft instanceof CheckDraft draft && draft.draftId().equals(draftId)) {
+            session.removeAttribute(CHECK_DRAFTS_SESSION_KEY);
         }
     }
 
@@ -505,9 +498,8 @@ public class WebPagesController {
     }
 
     private record CheckDraft(
+            String draftId,
             UUID checkRequestId,
-            byte[] frontBytes,
-            byte[] backBytes,
             Set<UUID> candidateIds
     ) {
     }
