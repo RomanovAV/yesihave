@@ -38,13 +38,20 @@ After startup:
 - App health: `http://localhost:8080/actuator/health`
 - MinIO console: `http://localhost:9001` (`minioadmin` / `minioadmin`)
 
-If you want Telegram bot polling enabled, set env var `APP_TELEGRAM_TOKEN` before startup.
+For the personal Telegram bot, set `APP_TELEGRAM_TOKEN` and
+`APP_TELEGRAM_ALLOWED_USER_IDS` (comma-separated numeric user IDs).
+An empty allowlist denies all Telegram access; only private chats are accepted.
 If token is empty, app still starts and web/API mode works without Telegram.
 
 Copy `.env.example` to `.env` for local overrides. `.env` is deliberately not
 tracked by Git.
 
 ## Public HTTPS with Basic Auth
+
+For deployment alongside an existing service on a VDS, use the isolated
+[`compose.vds.yml`](compose.vds.yml) setup described in [DEPLOY-VDS.md](DEPLOY-VDS.md).
+The shared HTTPS router is an independent [edge stack](infra/edge/README.md);
+each application's web gateway joins its external network with a unique alias.
 
 The default nginx endpoint is HTTP on `127.0.0.1:8080` only and cannot be
 reached directly from another host. Public access uses a separate TLS profile;
@@ -314,11 +321,20 @@ sudo ufw status verbose
 
 ## Telegram flow (implemented)
 
+The bot and website use the same collection, not separate per-user collections.
+Only allowlisted Telegram user IDs in private chats can use the bot. An empty
+allowlist denies access before downloading photos or accessing collection data.
+Keep the token in ignored `.env`/`.env.vds`, never in commands or Git.
+This deployment uses long polling and requires no additional public port.
+Use `/start` for the action buttons, and `/cancel` to discard the current step.
+
 - `/check`:
   - send `front` photo
   - send `back` photo
   - receive match decision + top candidates
-  - confirm ground truth with `/match <candidate-id>` or `/new`
+  - confirm a candidate using its button (or `/match <candidate-id>`)
+  - choose “Сохранить новый” (or `/new`), then enter a name to reuse the checked photos
+  - choose “Не сохранять” (or `/skip`) to record no match without adding
   - request audit is stored in `check_requests` and `check_candidates`
 - `/add`:
   - send `front` photo

@@ -3,6 +3,9 @@ target
 .idea
 *.iml
 .env
+.env.vds
+deployment-access.txt
+storage-binaries
 .venv
 .DS_Store
 models

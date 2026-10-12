@@ -1,0 +1,4 @@
+**
+!Dockerfile.vds
+!target/
+!target/*.jar

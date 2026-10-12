@@ -1,0 +1,13 @@
+# Connect only the web gateway to the independently managed edge proxy.
+services:
+  nginx:
+    networks:
+      default:
+      edge:
+        aliases:
+          - yesihave-web
+
+networks:
+  edge:
+    name: edge
+    external: true

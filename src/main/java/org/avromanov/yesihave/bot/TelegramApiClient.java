@@ -4,9 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.image.ImageProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.time.Duration;
 
 @Component
 @ConditionalOnExpression("'${app.telegram.token:}'.length() > 0")
@@ -16,25 +24,62 @@ public class TelegramApiClient {
     private final ImageBytesNormalizer imageBytesNormalizer;
     private final ImageProperties imageProperties;
 
+    @Autowired
     public TelegramApiClient(TelegramProperties properties,
                              ImageBytesNormalizer imageBytesNormalizer,
                              ImageProperties imageProperties) {
+        this(properties, imageBytesNormalizer, imageProperties, defaultRestClient());
+    }
+
+    TelegramApiClient(TelegramProperties properties,
+                      ImageBytesNormalizer imageBytesNormalizer,
+                      ImageProperties imageProperties,
+                      RestClient restClient) {
         this.token = properties.token();
         this.imageBytesNormalizer = imageBytesNormalizer;
         this.imageProperties = imageProperties;
-        this.restClient = RestClient.create();
+        this.restClient = restClient;
+    }
+
+    private static RestClient defaultRestClient() {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(10));
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).build();
     }
 
     public void sendMessage(Long chatId, String text) {
-        restClient.post()
+        sendMessage(chatId, text, List.of());
+    }
+
+    public void sendMessage(Long chatId, String text, List<List<String>> keyboard) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("chat_id", chatId);
+        body.put("text", text);
+        body.put("reply_markup", keyboard.isEmpty() ? Map.of("remove_keyboard", true)
+                : Map.of("keyboard", keyboard, "resize_keyboard", true));
+        try {
+            restClient.post()
                 .uri("https://api.telegram.org/bot{token}/sendMessage", token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new SendMessageRequest(chatId, text))
+                .body(body)
                 .retrieve()
                 .toBodilessEntity();
+        } catch (RestClientException e) {
+            // RestClient exceptions can include the request URI and bearer token.
+            throw new IllegalStateException("Telegram sendMessage failed");
+        }
     }
 
     public byte[] downloadFile(String fileId) {
+        try {
+            return downloadFileUnchecked(fileId);
+        } catch (RestClientException e) {
+            throw new IllegalStateException("Telegram file request failed");
+        }
+    }
+
+    private byte[] downloadFileUnchecked(String fileId) {
         JsonNode response = restClient.post()
                 .uri("https://api.telegram.org/bot{token}/getFile", token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -71,9 +116,6 @@ public class TelegramApiClient {
         }
         imageBytesNormalizer.validateEncodedSize(bytes.length);
         return bytes;
-    }
-
-    private record SendMessageRequest(Long chat_id, String text) {
     }
 
     private record GetFileRequest(String file_id) {

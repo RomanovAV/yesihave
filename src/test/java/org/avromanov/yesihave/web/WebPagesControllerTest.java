@@ -109,6 +109,32 @@ class WebPagesControllerTest {
     }
 
     @Test
+    void pagesShareStylesAndAccessibleNavigation() throws Exception {
+        for (String path : List.of("/", "/web/check", "/web/add")) {
+            mvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/web.css\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-label=\"Основная навигация\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("class=\"site-footer\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"viewport\"")));
+        }
+    }
+
+    @Test
+    void styledUploadFormsPreserveTheirSubmissionContract() throws Exception {
+        for (String path : List.of("/web/check", "/web/add")) {
+            mvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("action=\"" + path + "\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("enctype=\"multipart/form-data\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"front\" type=\"file\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("name=\"back\" type=\"file\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("class=\"photo-fields\"")))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"" + path + "\" aria-current=\"page\"")));
+        }
+    }
+
+    @Test
     void checkFlowRendersResult() throws Exception {
         MockMultipartFile front = new MockMultipartFile("front", "front.jpg", "image/jpeg", new byte[]{1});
         MockMultipartFile back = new MockMultipartFile("back", "back.jpg", "image/jpeg", new byte[]{2});

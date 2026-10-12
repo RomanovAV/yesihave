@@ -41,6 +41,7 @@ app:
   telegram:
     token: ${APP_TELEGRAM_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}
+    allowed-user-ids: ${APP_TELEGRAM_ALLOWED_USER_IDS:}
     session-ttl: ${APP_TELEGRAM_SESSION_TTL:15m}
     session-cleanup-interval: ${APP_TELEGRAM_SESSION_CLEANUP_INTERVAL:1m}
   storage:

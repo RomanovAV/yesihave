@@ -1,0 +1,23 @@
+{
+	# masterclass already owns port 80; use TLS-ALPN-01 on 443.
+	auto_https disable_redirects
+	# IP clients omit SNI. Docker's private address is not the certificate name.
+	default_sni {$EDGE_PUBLIC_IP}
+	cert_issuer acme {
+		dir https://acme-v02.api.letsencrypt.org/directory
+		disable_http_challenge
+	}
+}
+
+https://{$EDGE_PUBLIC_IP} {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			profile shortlived
+			disable_http_challenge
+		}
+	}
+	import /etc/caddy/routes/ip/*.caddy
+}
+
+import /etc/caddy/routes/hosts/*.caddy

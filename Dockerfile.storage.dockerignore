@@ -1,0 +1,7 @@
+**
+!Dockerfile.storage
+!storage-binaries/
+!storage-binaries/minio
+!storage-binaries/mc
+!storage-binaries/*.LICENSE
+!storage-binaries/provenance.json

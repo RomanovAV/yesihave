@@ -5,5 +5,6 @@ public enum TelegramSessionState {
     WAIT_FRONT,
     WAIT_BACK,
     WAIT_NAME,
+    WAIT_CHECKED_NAME,
     WAIT_FEEDBACK
 }

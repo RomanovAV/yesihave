@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,7 +19,7 @@ class BotSessionTest {
         UUID checkId = UUID.randomUUID();
         UUID candidateId = UUID.randomUUID();
 
-        session.prepareFeedback(checkId, Set.of(candidateId));
+        session.prepareFeedback(checkId, List.of(candidateId));
 
         assertThat(session.state()).isEqualTo(TelegramSessionState.WAIT_FEEDBACK);
         assertThat(session.frontImage()).isNull();

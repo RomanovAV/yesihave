@@ -1,0 +1,7 @@
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY storage-binaries/minio storage-binaries/mc /usr/local/bin/
+COPY storage-binaries/*.LICENSE storage-binaries/provenance.json /usr/share/yesihave-storage/
+ENTRYPOINT ["minio"]

@@ -55,30 +55,52 @@ public class WebPagesController {
     public String home() {
         return page("YesIHave", """
                 <section class="hero">
-                  <h1>YesIHave</h1>
-                  <p>Минимальный web по аналогии с Telegram: <b>check</b> и <b>add</b>.</p>
-                  <div class="actions">
-                    <a class="btn" href="/web/check">Проверить (check)</a>
-                    <a class="btn secondary" href="/web/add">Добавить (add)</a>
+                  <div class="hero-copy">
+                    <span class="eyebrow">Ваша коллекция бирдекелей</span>
+                    <h1>Этот уже есть?<br>Давайте проверим.</h1>
+                    <p class="lead">Два фото — и вы узнаете, есть ли такой бирдекель в коллекции. Новую находку можно сразу сохранить.</p>
+                    <div class="actions">
+                      <a class="btn" href="/web/check">Проверить по фото <span aria-hidden="true">&nbsp;↗</span></a>
+                    </div>
                   </div>
-                  <p class="muted">Старый режим (JS + API) доступен на <a href="/index.html">/index.html</a>.</p>
+                  <div class="hero-coaster" aria-hidden="true"></div>
                 </section>
+                <div class="feature-grid">
+                  <a class="feature" href="/web/check">
+                    <span class="feature-number">01 / ПРОВЕРКА</span>
+                    <h2>Узнать, есть ли такой</h2>
+                    <p>Сравним обе стороны с экземплярами в вашей коллекции.</p>
+                    <span class="feature-arrow" aria-hidden="true">↗</span>
+                  </a>
+                  <a class="feature" href="/web/add">
+                    <span class="feature-number">02 / НОВАЯ НАХОДКА</span>
+                    <h2>Пополнить коллекцию</h2>
+                    <p>Добавьте название и фотографии нового бирдекеля.</p>
+                    <span class="feature-arrow" aria-hidden="true">↗</span>
+                  </a>
+                </div>
                 """);
     }
 
     @GetMapping(value = "/web/check", produces = MediaType.TEXT_HTML_VALUE)
     public String checkForm() {
-        return page("Check", """
+        return page("Проверка", """
                 <section class="card">
-                  <h2>Проверить пару (front/back)</h2>
+                  <span class="eyebrow">01 / Проверка коллекции</span>
+                  <h2>Есть ли такой бирдекель?</h2>
+                  <p class="muted">Загрузите обе стороны. Подойдут JPG, PNG и фото HEIC с iPhone.</p>
                   <form method="post" action="/web/check" enctype="multipart/form-data">
-                    <label>Front (iPhone HEIC тоже можно)
-                      <input name="front" type="file" accept="image/*" required>
-                    </label>
-                    <label>Back (iPhone HEIC тоже можно)
-                      <input name="back" type="file" accept="image/*" required>
-                    </label>
-                    <button type="submit">Проверить</button>
+                    <div class="photo-fields">
+                      <label class="photo-field"><span class="field-number" aria-hidden="true">1</span> Лицевая сторона
+                        <span class="field-note">Снимите целиком, при хорошем освещении</span>
+                        <input name="front" type="file" accept="image/*" required>
+                      </label>
+                      <label class="photo-field"><span class="field-number" aria-hidden="true">2</span> Обратная сторона
+                        <span class="field-note">Переверните и сделайте второй снимок</span>
+                        <input name="back" type="file" accept="image/*" required>
+                      </label>
+                    </div>
+                    <button type="submit">Найти в коллекции</button>
                   </form>
                   <div class="nav">
                     <a href="/">На главную</a>
@@ -107,20 +129,26 @@ public class WebPagesController {
 
     @GetMapping(value = "/web/add", produces = MediaType.TEXT_HTML_VALUE)
     public String addForm() {
-        return page("Add", """
+        return page("Добавление", """
                 <section class="card">
+                  <span class="eyebrow">02 / Новая находка</span>
                   <h2>Добавить новый бирдекель</h2>
+                  <p class="muted">Дайте ему название и сохраните фотографии обеих сторон.</p>
                   <form method="post" action="/web/add" enctype="multipart/form-data">
-                    <label>Name
+                    <label>Название
                       <input name="name" type="text" placeholder="Например, Guinness Classic" required>
                     </label>
-                    <label>Front (iPhone HEIC тоже можно)
-                      <input name="front" type="file" accept="image/*" required>
-                    </label>
-                    <label>Back (iPhone HEIC тоже можно)
-                      <input name="back" type="file" accept="image/*" required>
-                    </label>
-                    <button type="submit">Добавить</button>
+                    <div class="photo-fields">
+                      <label class="photo-field"><span class="field-number" aria-hidden="true">1</span> Лицевая сторона
+                        <span class="field-note">JPG, PNG или HEIC с iPhone</span>
+                        <input name="front" type="file" accept="image/*" required>
+                      </label>
+                      <label class="photo-field"><span class="field-number" aria-hidden="true">2</span> Обратная сторона
+                        <span class="field-note">JPG, PNG или HEIC с iPhone</span>
+                        <input name="back" type="file" accept="image/*" required>
+                      </label>
+                    </div>
+                    <button type="submit">Сохранить в коллекцию</button>
                   </form>
                   <div class="nav">
                     <a href="/">На главную</a>
@@ -136,18 +164,18 @@ public class WebPagesController {
         try {
             String trimmedName = name == null ? "" : name.trim();
             if (trimmedName.isBlank()) {
-                throw new IllegalArgumentException("Введите name.");
+                throw new IllegalArgumentException("Введите название.");
             }
 
             byte[] frontBytes = uploadedImageNormalizer.normalizeToJpegIfHeic(front);
             byte[] backBytes = uploadedImageNormalizer.normalizeToJpegIfHeic(back);
 
             UUID id = addCoasterUseCase.add(trimmedName, frontBytes, backBytes);
-            return page("Added", """
+            return page("Добавлено", """
                     <section class="card">
                       <h2>Добавлено</h2>
-                      <p><b>Name:</b> %s</p>
-                      <p><b>Id:</b> <code>%s</code></p>
+                      <p><b>Название:</b> %s</p>
+                      <p><b>Идентификатор:</b> <code>%s</code></p>
                       <div class="actions">
                         <a class="btn" href="/web/add">Добавить ещё</a>
                         <a class="btn secondary" href="/web/check">Проверить</a>
@@ -172,7 +200,7 @@ public class WebPagesController {
         try {
             String trimmedName = name == null ? "" : name.trim();
             if (trimmedName.isBlank()) {
-                throw new IllegalArgumentException("Введите name.");
+                throw new IllegalArgumentException("Введите название.");
             }
 
             CheckDraft draft = getCheckDraft(session, draftId);
@@ -218,7 +246,7 @@ public class WebPagesController {
                     FeedbackSource.WEB
             );
             removeCheckDraft(session, draftId);
-            return page("Feedback saved", """
+            return page("Подтверждение", """
                     <section class="card">
                       <h2>Спасибо, подтверждение сохранено</h2>
                       <p>Эта проверка будет использована для оценки и настройки качества поиска.</p>
@@ -244,13 +272,13 @@ public class WebPagesController {
             return errorPage("Черновик не найден", "Сначала выполните проверку и затем попробуйте добавить по этим фото.", "/web/check");
         }
 
-        return page("Add From Check", """
+        return page("Добавление", """
                 <section class="card">
                   <h2>Добавить как новый костер</h2>
                   <p class="muted">Используем фото из последней проверки. Нужно только ввести название.</p>
                   <form method="post" action="/web/add-from-check">
                     <input name="draftId" type="hidden" value="%s">
-                    <label>Name
+                    <label>Название
                       <input name="name" type="text" placeholder="Например, Guinness Classic" required>
                     </label>
                     <button type="submit">Добавить по этим фото</button>
@@ -287,17 +315,17 @@ public class WebPagesController {
         String feedback = renderFeedbackSection(r, draftId);
         String candidatesTitle = r.decision() == MatchDecision.UNCERTAIN
                 ? "3 лучших кандидата"
-                : "Top кандидаты";
+                : "Похожие экземпляры";
 
-        return page("Result", """
+        return page("Результат", """
                 <section class="card">
                   <h2>Результат</h2>
                   <div class="kv">
-                    <div><span class="k">Decision</span><span class="v"><b>%s</b></span></div>
-                    <div><span class="k">front</span><span class="v">%s</span></div>
-                    <div><span class="k">back</span><span class="v">%s</span></div>
-                    <div><span class="k">pair</span><span class="v">%s</span></div>
-                    <div><span class="k">matchedId</span><span class="v">%s</span></div>
+                    <div><span class="k">Результат</span><span class="v"><b>%s</b></span></div>
+                    <div><span class="k">Лицевая сторона</span><span class="v">%s</span></div>
+                    <div><span class="k">Обратная сторона</span><span class="v">%s</span></div>
+                    <div><span class="k">Сходство пары</span><span class="v">%s</span></div>
+                    <div><span class="k">Совпадение</span><span class="v">%s</span></div>
                   </div>
                   <h3>%s</h3>
                   %s
@@ -393,11 +421,11 @@ public class WebPagesController {
     }
 
     private String renderAddedPage(String trimmedName, UUID id, String note) {
-        return page("Added", """
+        return page("Добавлено", """
                 <section class="card">
                   <h2>Добавлено</h2>
-                  <p><b>Name:</b> %s</p>
-                  <p><b>Id:</b> <code>%s</code></p>
+                  <p><b>Название:</b> %s</p>
+                  <p><b>Идентификатор:</b> <code>%s</code></p>
                   <p class="muted">%s</p>
                   <div class="actions">
                     <a class="btn" href="/web/add">Добавить ещё</a>
@@ -460,6 +488,10 @@ public class WebPagesController {
     }
 
     private String page(String title, String body) {
+        String documentTitle = "YesIHave".equals(title) ? title : title + " · YesIHave";
+        String checkCurrent = "Проверка".equals(title) || "Результат".equals(title)
+                ? " aria-current=\"page\"" : "";
+        String addCurrent = "Добавление".equals(title) ? " aria-current=\"page\"" : "";
         return """
                 <!doctype html>
                 <html lang="ru">
@@ -470,12 +502,23 @@ public class WebPagesController {
                   <link rel="stylesheet" href="/web.css">
                 </head>
                 <body>
+                  <header class="site-header">
+                    <a class="brand" href="/" aria-label="YesIHave — главная"><span class="brand-mark" aria-hidden="true"></span>YesIHave</a>
+                    <nav class="site-nav" aria-label="Основная навигация">
+                      <a href="/web/check"%s>Проверить</a>
+                      <a href="/web/add"%s>Добавить</a>
+                    </nav>
+                  </header>
                   <main class="wrap">
                     %s
                   </main>
+                  <footer class="site-footer">
+                    <span>Каждая находка — часть вашей истории.</span>
+                    <a href="/index.html">Режим API</a>
+                  </footer>
                 </body>
                 </html>
-                """.formatted(escapeHtml(title), body);
+                """.formatted(escapeHtml(documentTitle), checkCurrent, addCurrent, body);
     }
 
     private String formatScore(Double score) {

@@ -1,0 +1,4 @@
+# Default IP route. More specific handle/handle_path routes take precedence.
+handle {
+	reverse_proxy yesihave-web:8080
+}

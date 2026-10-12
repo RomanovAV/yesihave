@@ -1,6 +1,7 @@
 package org.avromanov.yesihave.bot;
 
 import org.avromanov.yesihave.application.AddCoasterUseCase;
+import org.avromanov.yesihave.application.AddCheckedCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
 import org.avromanov.yesihave.application.DuplicateCoasterException;
 import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
@@ -22,10 +23,11 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
-import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnExpression("'${app.telegram.token:}'.length() > 0")
@@ -37,18 +39,23 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
     private final CheckPairUseCase checkPairUseCase;
     private final AddCoasterUseCase addCoasterUseCase;
     private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
+    private final AddCheckedCoasterUseCase addCheckedCoasterUseCase;
+    private static final List<List<String>> MAIN_MENU = List.of(List.of("Проверить", "Добавить"));
+    private static final List<List<String>> CANCEL_MENU = List.of(List.of("Отмена"));
     private final Map<Long, BotSession> sessions = new ConcurrentHashMap<>();
 
     public YesIHaveTelegramBot(TelegramProperties telegramProperties,
                                TelegramApiClient telegramApiClient,
                                CheckPairUseCase checkPairUseCase,
                                AddCoasterUseCase addCoasterUseCase,
-                               RecordCheckFeedbackUseCase recordCheckFeedbackUseCase) {
+                               RecordCheckFeedbackUseCase recordCheckFeedbackUseCase,
+                               AddCheckedCoasterUseCase addCheckedCoasterUseCase) {
         this.telegramProperties = telegramProperties;
         this.telegramApiClient = telegramApiClient;
         this.checkPairUseCase = checkPairUseCase;
         this.addCoasterUseCase = addCoasterUseCase;
         this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
+        this.addCheckedCoasterUseCase = addCheckedCoasterUseCase;
     }
 
     @Override
@@ -70,7 +77,10 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
 
         Message message = update.getMessage();
         Long chatId = message.getChatId();
-        if (chatId == null) {
+        if (chatId == null || message.getChat() == null || !"private".equals(message.getChat().getType())
+                || message.getFrom() == null || Boolean.TRUE.equals(message.getFrom().getIsBot())
+                || !chatId.equals(message.getFrom().getId())
+                || !telegramProperties.allowedUserIds().contains(message.getFrom().getId())) {
             return;
         }
 
@@ -86,73 +96,104 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                 return;
             }
 
-            telegramApiClient.sendMessage(chatId, "Пришлите команду /check или /add.");
+            menu(chatId, "Выберите проверку или добавление. Фото отправляйте как фотографии, не как файлы.");
         } catch (DuplicateCoasterException e) {
             sessions.remove(chatId);
-            telegramApiClient.sendMessage(
-                    chatId,
-                    "Такой бирдекель уже добавлен (id: " + e.existingCoasterId() + ")."
-            );
+            menu(chatId, "Такой бирдекель уже есть в коллекции.");
         } catch (Exception e) {
             sessions.remove(chatId);
-            log.error("Telegram update processing failed for chat {}", chatId, e);
-            telegramApiClient.sendMessage(chatId, "Произошла ошибка. Попробуйте снова с /check или /add.");
+            log.error("Telegram update processing failed for chat {}, type={}", chatId, e.getClass().getSimpleName());
+            menu(chatId, "Не удалось обработать запрос. Начните заново: проверка или добавление.");
         }
     }
 
     private void handleText(Long chatId, String text, BotSession session) {
-        if (text.startsWith("/start")) {
+        String command = text.split("\\s+", 2)[0];
+        if (command.equals("/start") || command.equals("/cancel") || text.equals("Отмена")) {
             sessions.remove(chatId);
-            telegramApiClient.sendMessage(chatId, "Привет. Используй /check для проверки и /add для добавления.");
+            menu(chatId, "Ваша коллекция бирдекелей — здесь и на сайте. Выберите действие, затем пришлите фотографии обеих сторон по порядку.");
             return;
         }
 
-        if (text.startsWith("/help")) {
+        if (command.equals("/help")) {
             telegramApiClient.sendMessage(
                     chatId,
-                    "/check - проверить по front/back\n"
+                    "/check - проверить по двум фото\n"
                             + "/add - добавить новый бирдекель\n"
                             + "/match <id> - подтвердить найденный дубликат\n"
-                            + "/new - подтвердить, что совпадения нет"
+                            + "/new - сохранить новый по этим же фото\n"
+                            + "/skip - не сохранять находку\n"
+                            + "/cancel - отменить текущее действие"
             );
             return;
         }
 
-        if (text.startsWith("/match")) {
+        if (command.equals("/match")) {
             handleMatchFeedback(chatId, text, session);
             return;
         }
 
-        if (text.equals("/new")) {
+        if (text.startsWith("Совпадение ") && session.state() == TelegramSessionState.WAIT_FEEDBACK) {
+            try {
+                int index = Integer.parseInt(text.substring("Совпадение ".length())) - 1;
+                if (index < 0 || index >= session.candidateOrder().size()) {
+                    throw new IllegalArgumentException();
+                }
+                handleMatchFeedback(chatId, "/match " + session.candidateOrder().get(index), session);
+            } catch (IllegalArgumentException e) {
+                telegramApiClient.sendMessage(chatId, "Выберите кандидата из последней проверки.");
+            }
+            return;
+        }
+
+        if (command.equals("/new") || text.equals("Сохранить новый")) {
+            if (session.state() != TelegramSessionState.WAIT_FEEDBACK) {
+                telegramApiClient.sendMessage(chatId, "Сначала выполните проверку.");
+                return;
+            }
+            session.setState(TelegramSessionState.WAIT_CHECKED_NAME);
+            telegramApiClient.sendMessage(chatId, "Введите название. Использую фото из этой проверки — отправлять их повторно не нужно.", CANCEL_MENU);
+            return;
+        }
+
+        if (command.equals("/skip") || text.equals("Не сохранять")) {
             handleNoMatchFeedback(chatId, session);
             return;
         }
 
-        if (text.startsWith("/check")) {
+        if (command.equals("/check") || text.equals("Проверить")) {
             session.reset();
             session.setAction(BotAction.CHECK);
             session.setState(TelegramSessionState.WAIT_FRONT);
-            telegramApiClient.sendMessage(chatId, "Пришли фото лицевой стороны (front).");
+            telegramApiClient.sendMessage(chatId, "Пришлите фото лицевой стороны бирдекеля.", CANCEL_MENU);
             return;
         }
 
-        if (text.startsWith("/add")) {
+        if (command.equals("/add") || text.equals("Добавить")) {
             session.reset();
             session.setAction(BotAction.ADD);
             session.setState(TelegramSessionState.WAIT_FRONT);
-            telegramApiClient.sendMessage(chatId, "Пришли фото лицевой стороны (front).");
+            telegramApiClient.sendMessage(chatId, "Пришлите фото лицевой стороны бирдекеля.", CANCEL_MENU);
             return;
         }
 
-        if (session.action() == BotAction.ADD && session.state() == TelegramSessionState.WAIT_NAME) {
-            String name = text.isBlank() ? "Unnamed coaster" : text;
-            var coasterId = addCoasterUseCase.add(name, session.frontImage(), session.backImage());
+        if ((session.action() == BotAction.ADD && session.state() == TelegramSessionState.WAIT_NAME)
+                || session.state() == TelegramSessionState.WAIT_CHECKED_NAME) {
+            if (text.isBlank() || text.startsWith("/")) {
+                telegramApiClient.sendMessage(chatId, "Введите название текстом или отмените действие.", CANCEL_MENU);
+                return;
+            }
+            if (session.state() == TelegramSessionState.WAIT_CHECKED_NAME) {
+                addCheckedCoasterUseCase.add(text, session.checkRequestId(), FeedbackSource.TELEGRAM);
+            } else {
+                addCoasterUseCase.add(text, session.frontImage(), session.backImage());
+            }
             sessions.remove(chatId);
-            telegramApiClient.sendMessage(chatId, "Добавлено: " + name + " (id: " + coasterId + ").");
+            menu(chatId, "Сохранено в коллекцию: " + text);
             return;
         }
 
-        telegramApiClient.sendMessage(chatId, "Не понял команду. Используй /check или /add.");
+        menu(chatId, "Выберите действие кнопкой или отправьте /check или /add.");
     }
 
     private void handlePhoto(Long chatId, Message message, BotSession session) {
@@ -163,7 +204,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
 
         PhotoSize bestPhoto = message.getPhoto()
                 .stream()
-                .max(Comparator.comparingInt(photo -> photo.getFileSize() == null ? 0 : photo.getFileSize()))
+                .max(Comparator.comparingLong(photo -> (long) photo.getWidth() * photo.getHeight()))
                 .orElseThrow();
 
         byte[] bytes = telegramApiClient.downloadFile(bestPhoto.getFileId());
@@ -171,53 +212,57 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         if (session.state() == TelegramSessionState.WAIT_FRONT) {
             session.setFrontImage(bytes);
             session.setState(TelegramSessionState.WAIT_BACK);
-            telegramApiClient.sendMessage(chatId, "Теперь пришли фото обратной стороны (back).");
+            telegramApiClient.sendMessage(chatId, "Теперь пришлите фото обратной стороны.", CANCEL_MENU);
             return;
         }
 
         session.setBackImage(bytes);
         if (session.action() == BotAction.CHECK) {
             MatchResultDto result = checkPairUseCase.check(chatId, session.frontImage(), session.backImage());
-            Set<UUID> candidateIds = result.topCandidates() == null
-                    ? Set.of()
-                    : result.topCandidates().stream()
-                            .map(CandidateDto::coasterId)
-                            .collect(Collectors.toUnmodifiableSet());
-            session.prepareFeedback(result.checkRequestId(), candidateIds);
+            List<CandidateDto> candidates = result.topCandidates() == null ? List.of()
+                    : result.topCandidates().stream().limit(3).toList();
+            session.prepareFeedback(result.checkRequestId(), candidates.stream().map(CandidateDto::coasterId).toList());
+            List<List<String>> keyboard = new ArrayList<>();
+            for (int i = 0; i < candidates.size(); i++) {
+                keyboard.add(List.of("Совпадение " + (i + 1)));
+            }
+            keyboard.add(List.of("Сохранить новый", "Не сохранять"));
+            keyboard.add(List.of("Отмена"));
             telegramApiClient.sendMessage(
                     chatId,
                     formatMatchResult(result)
-                            + "\n\nПодтверди результат: /match <id> или /new."
+                            + "\n\nВыберите совпадение или сохраните новую находку.",
+                    keyboard
             );
             return;
         }
 
         if (session.action() == BotAction.ADD) {
             session.setState(TelegramSessionState.WAIT_NAME);
-            telegramApiClient.sendMessage(chatId, "Введи name для бирдекеля.");
+            telegramApiClient.sendMessage(chatId, "Введите название бирдекеля.", CANCEL_MENU);
         }
     }
 
     private String formatMatchResult(MatchResultDto result) {
         StringBuilder builder = new StringBuilder();
-        builder.append("Результат: ").append(result.decision()).append('\n')
-                .append("front=").append(formatScore(result.scoreFront())).append(", ")
-                .append("back=").append(formatScore(result.scoreBack())).append(", ")
-                .append("pair=").append(formatScore(result.pairScore())).append('\n');
+        builder.append(switch (result.decision()) {
+            case MATCH -> "Похоже, такой бирдекель уже есть в коллекции.";
+            case NO_MATCH -> "Уверенного совпадения не нашлось.";
+            case UNCERTAIN -> "Есть похожие экземпляры — нужно ваше подтверждение.";
+        }).append('\n').append("Сходство пары: ").append(formatScore(result.pairScore())).append('\n');
 
         if (result.topCandidates() == null || result.topCandidates().isEmpty()) {
             builder.append("Кандидаты: нет");
             return builder.toString();
         }
 
-        builder.append("Top кандидаты:\n");
-        for (CandidateDto candidate : result.topCandidates()) {
-            builder.append(candidate.rank())
+        builder.append("Похожие экземпляры:\n");
+        int index = 0;
+        for (CandidateDto candidate : result.topCandidates().stream().limit(3).toList()) {
+            builder.append(++index)
                     .append(". ")
                     .append(candidate.name())
-                    .append(" id=")
-                    .append(candidate.coasterId())
-                    .append(" pair=")
+                    .append(" — сходство ")
                     .append(formatScore(candidate.pairScore()))
                     .append('\n');
         }
@@ -253,11 +298,12 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                 FeedbackSource.TELEGRAM
         );
         sessions.remove(chatId);
-        telegramApiClient.sendMessage(chatId, "Спасибо, совпадение подтверждено.");
+        menu(chatId, "Совпадение подтверждено. Повторно в коллекцию не добавляю.");
     }
 
     private void handleNoMatchFeedback(Long chatId, BotSession session) {
-        if (session.state() != TelegramSessionState.WAIT_FEEDBACK) {
+        if (session.state() != TelegramSessionState.WAIT_FEEDBACK
+                && session.state() != TelegramSessionState.WAIT_CHECKED_NAME) {
             telegramApiClient.sendMessage(chatId, "Сначала выполни /check.");
             return;
         }
@@ -267,7 +313,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                 FeedbackSource.TELEGRAM
         );
         sessions.remove(chatId);
-        telegramApiClient.sendMessage(chatId, "Спасибо, отсутствие совпадения подтверждено.");
+        menu(chatId, "Находку не сохраняю. Отсутствие совпадения отмечено.");
     }
 
     @Scheduled(fixedDelayString = "${app.telegram.session-cleanup-interval:1m}")
@@ -282,6 +328,10 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         if (score == null) {
             return "n/a";
         }
-        return String.format("%.4f", score);
+        return String.format(Locale.ROOT, "%.1f%%", score * 100);
+    }
+
+    private void menu(Long chatId, String text) {
+        telegramApiClient.sendMessage(chatId, text, MAIN_MENU);
     }
 }

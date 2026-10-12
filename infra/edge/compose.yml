@@ -1,0 +1,30 @@
+name: edge
+
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    environment:
+      EDGE_PUBLIC_IP: ${EDGE_PUBLIC_IP:?Set EDGE_PUBLIC_IP in .env}
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./routes:/etc/caddy/routes:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    mem_limit: 128m
+    memswap_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  edge:
+    name: edge
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
