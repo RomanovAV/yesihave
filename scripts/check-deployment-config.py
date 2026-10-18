@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check deployment boundaries without requiring a running Docker daemon."""
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -35,6 +36,10 @@ for name, service in app["services"].items():
         require(port.get("host_ip") == "127.0.0.1", "app ports must be loopback-only")
 require("yesihave-web" in app["services"]["nginx"]["networks"]["edge"]["aliases"],
         "gateway needs a stable, unique routing alias")
+nginx = (ROOT / "nginx/nginx-vds.conf").read_text()
+backend_hosts = re.findall(r"proxy_pass\s+http://([^:/;]+):8080;", nginx)
+require(backend_hosts and set(backend_hosts) == {app["name"] + "-app-1"},
+        "gateway backend must use the project-qualified container name; app can collide on edge")
 router = edge["services"]["caddy"]
 require(set(router["networks"]) == {"edge"}, "router must not join backend networks")
 require(not router.get("depends_on"), "router lifecycle must not depend on an app")

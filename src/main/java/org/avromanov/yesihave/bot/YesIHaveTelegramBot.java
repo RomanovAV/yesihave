@@ -114,14 +114,15 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         String command = text.split("\\s+", 2)[0];
         if (command.equals("/start") || command.equals("/cancel") || text.equals("Отмена")) {
             sessions.remove(chatId);
-            menu(chatId, "Ваша коллекция бирдекелей — здесь и на сайте. Выберите действие, затем пришлите фотографии обеих сторон по порядку.");
+            menu(chatId, "Ваша коллекция бирдекелей — здесь и на сайте. Для проверки просто пришлите фото одной стороны, затем второй. Для добавления выберите «Добавить».");
             return;
         }
 
         if (command.equals("/help")) {
             telegramApiClient.sendMessage(
                     chatId,
-                    "/check - проверить по двум фото\n"
+                    "Для проверки просто пришлите фото одной стороны, затем второй.\n\n"
+                            + "/check - проверить по двум фото\n"
                             + "/add - добавить новый бирдекель\n"
                             + "/match <id> - подтвердить найденный дубликат\n"
                             + "/new - сохранить новый по этим же фото\n"
@@ -200,8 +201,13 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
     }
 
     private void handlePhoto(Long chatId, Message message, BotSession session) {
+        if (session.state() == TelegramSessionState.IDLE || session.state() == TelegramSessionState.WAIT_FEEDBACK) {
+            session.reset();
+            session.setAction(BotAction.CHECK);
+            session.setState(TelegramSessionState.WAIT_FRONT);
+        }
         if (session.state() != TelegramSessionState.WAIT_FRONT && session.state() != TelegramSessionState.WAIT_BACK) {
-            telegramApiClient.sendMessage(chatId, "Сначала отправь /check или /add.");
+            telegramApiClient.sendMessage(chatId, "Сейчас жду название бирдекеля текстом. Для новой проверки отправьте /check или нажмите «Отмена».", CANCEL_MENU);
             return;
         }
 

@@ -327,6 +327,9 @@ allowlist denies access before downloading photos or accessing collection data.
 Keep the token in ignored `.env`/`.env.vds`, never in commands or Git.
 This deployment uses long polling and requires no additional public port.
 Use `/start` for the action buttons, and `/cancel` to discard the current step.
+Sending a photo directly starts a check: the bot asks for the other side and
+checks the pair. A photo after the previous result starts another check.
+While naming a new coaster, extra photos leave the current save step intact.
 
 - `/check`:
   - send `front` photo

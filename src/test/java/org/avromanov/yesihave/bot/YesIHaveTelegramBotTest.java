@@ -86,6 +86,67 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
+    void firstPhotoWithoutCommandAsksForOtherSideThenChecksBothPhotos() {
+        bot.consume(photo(OWNER, "front"));
+        verify(api).sendMessage(eq(OWNER), contains("фото обратной стороны"), eq(List.of(List.of("Отмена"))));
+        verifyNoInteractions(check, add, checked, feedback, photos);
+
+        bot.consume(photo(OWNER, "back"));
+        verify(check).check(eq(OWNER), aryEq(new byte[]{1}), aryEq(new byte[]{2}));
+        verify(api).sendPhotoPair(eq(OWNER), startsWith("Совпадение 1:"), any(), any());
+        bot.consume(text(OWNER, "Совпадение 1"));
+        verify(feedback).confirmMatch(CHECK_ID, CANDIDATE_ID, FeedbackSource.TELEGRAM);
+        verifyNoInteractions(add, checked);
+    }
+
+    @Test
+    void photoAfterStartOrCancellationStartsFreshCheck() {
+        bot.consume(text(OWNER, "/start"));
+        bot.consume(photo(OWNER, "front"));
+        bot.consume(text(OWNER, "Отмена"));
+        bot.consume(photo(OWNER, "back"));
+        verifyNoInteractions(check);
+        bot.consume(photo(OWNER, "front"));
+        verify(check).check(eq(OWNER), aryEq(new byte[]{2}), aryEq(new byte[]{1}));
+    }
+
+    @Test
+    void photoAfterResultStartsAnotherCheckAndDiscardsPreviousCandidateSelection() {
+        performCheck();
+        bot.consume(photo(OWNER, "back"));
+        bot.consume(text(OWNER, "/match " + CANDIDATE_ID));
+        verifyNoInteractions(feedback);
+        bot.consume(photo(OWNER, "front"));
+        verify(check).check(eq(OWNER), aryEq(new byte[]{2}), aryEq(new byte[]{1}));
+        verify(check, times(2)).check(eq(OWNER), any(), any());
+    }
+
+    @Test
+    void photosDoNotReplaceNameOrImagesDuringExplicitAdd() {
+        bot.consume(text(OWNER, "Добавить"));
+        bot.consume(photo(OWNER, "front"));
+        bot.consume(photo(OWNER, "back"));
+        bot.consume(photo(OWNER, "unwanted-photo"));
+        verify(api, never()).downloadFile("unwanted-photo");
+        verify(api).sendMessage(eq(OWNER), contains("жду название"), anyList());
+        bot.consume(text(OWNER, "My coaster"));
+        verify(add).add(eq("My coaster"), aryEq(new byte[]{1}), aryEq(new byte[]{2}));
+        verifyNoInteractions(check, checked);
+    }
+
+    @Test
+    void photoWhileNamingCheckedCoasterKeepsOriginalCheck() {
+        performCheck();
+        bot.consume(text(OWNER, "Сохранить новый"));
+        bot.consume(photo(OWNER, "unwanted-photo"));
+        verify(api, never()).downloadFile("unwanted-photo");
+        bot.consume(text(OWNER, "New coaster"));
+        verify(checked).add("New coaster", CHECK_ID, FeedbackSource.TELEGRAM);
+        verify(check, times(1)).check(eq(OWNER), any(), any());
+        verifyNoInteractions(add);
+    }
+
+    @Test
     void checkedPhotosCanBeSavedWithoutAnotherDownload() {
         performCheck();
         bot.consume(text(OWNER, "Сохранить новый"));
@@ -210,10 +271,11 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
-    void commandsWithWrongPrefixCannotStartPhotoProcessing() {
+    void commandsWithWrongPrefixDoNotRequestOrDownloadPhotos() {
         bot.consume(text(OWNER, "/checkanything"));
-        bot.consume(photo(OWNER, "front"));
         verify(api, never()).downloadFile(anyString());
+        verify(api, never()).sendMessage(eq(OWNER), eq("Пришлите фото лицевой стороны бирдекеля."), anyList());
+        verifyNoInteractions(check, add, checked);
     }
 
     @Test
