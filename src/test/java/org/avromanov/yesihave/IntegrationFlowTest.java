@@ -16,6 +16,8 @@ import org.avromanov.yesihave.image.EmbeddingPipelineDescriptor;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
+import org.avromanov.yesihave.persistence.CoasterReadRepository;
+import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.avromanov.yesihave.storage.StorageProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -102,6 +104,24 @@ class IntegrationFlowTest {
 
     @Autowired
     StorageProperties storageProperties;
+
+    @Autowired
+    CoasterReadRepository coasterReadRepository;
+
+    @Autowired
+    ObjectStorageService objectStorageService;
+
+    @Test
+    void candidatePhotosResolveToStoredSidesOfRequestedCoaster() throws Exception {
+        byte[] front = png(Color.MAGENTA);
+        byte[] back = png(Color.CYAN);
+        UUID coasterId = addCoasterUseCase.add("Photo candidate", front, back);
+        var pair = coasterReadRepository.findImagePair(coasterId).orElseThrow();
+        assertThat(pair.coasterId()).isEqualTo(coasterId);
+        assertThat(objectStorageService.getBytes(pair.frontKey())).isEqualTo(front);
+        assertThat(objectStorageService.getBytes(pair.backKey())).isEqualTo(back);
+        assertThat(coasterReadRepository.findImagePair(UUID.randomUUID())).isEmpty();
+    }
 
     @Test
     void addThenCheckReturnsMatch() throws Exception {

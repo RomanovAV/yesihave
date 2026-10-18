@@ -40,6 +40,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
     private final AddCoasterUseCase addCoasterUseCase;
     private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
     private final AddCheckedCoasterUseCase addCheckedCoasterUseCase;
+    private final CandidatePhotoService candidatePhotoService;
     private static final List<List<String>> MAIN_MENU = List.of(List.of("Проверить", "Добавить"));
     private static final List<List<String>> CANCEL_MENU = List.of(List.of("Отмена"));
     private final Map<Long, BotSession> sessions = new ConcurrentHashMap<>();
@@ -49,13 +50,15 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                                CheckPairUseCase checkPairUseCase,
                                AddCoasterUseCase addCoasterUseCase,
                                RecordCheckFeedbackUseCase recordCheckFeedbackUseCase,
-                               AddCheckedCoasterUseCase addCheckedCoasterUseCase) {
+                               AddCheckedCoasterUseCase addCheckedCoasterUseCase,
+                               CandidatePhotoService candidatePhotoService) {
         this.telegramProperties = telegramProperties;
         this.telegramApiClient = telegramApiClient;
         this.checkPairUseCase = checkPairUseCase;
         this.addCoasterUseCase = addCoasterUseCase;
         this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
         this.addCheckedCoasterUseCase = addCheckedCoasterUseCase;
+        this.candidatePhotoService = candidatePhotoService;
     }
 
     @Override
@@ -228,9 +231,26 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             }
             keyboard.add(List.of("Сохранить новый", "Не сохранять"));
             keyboard.add(List.of("Отмена"));
+            List<Integer> unavailablePhotos = new ArrayList<>();
+            for (int i = 0; i < candidates.size(); i++) {
+                CandidateDto candidate = candidates.get(i);
+                try {
+                    var photos = candidatePhotoService.load(candidate.coasterId());
+                    telegramApiClient.sendPhotoPair(chatId,
+                            "Совпадение " + (i + 1) + ": " + candidate.name()
+                                    + " — сходство " + formatScore(candidate.pairScore()),
+                            photos.front(), photos.back());
+                } catch (RuntimeException e) {
+                    unavailablePhotos.add(i + 1);
+                    log.warn("Candidate photos unavailable for coaster {}, type={}",
+                            candidate.coasterId(), e.getClass().getSimpleName());
+                }
+            }
             telegramApiClient.sendMessage(
                     chatId,
                     formatMatchResult(result)
+                            + (unavailablePhotos.isEmpty() ? "" : "\nНе удалось показать фото вариантов: "
+                            + unavailablePhotos.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", ")) + ".")
                             + "\n\nВыберите совпадение или сохраните новую находку.",
                     keyboard
             );

@@ -6,6 +6,10 @@ import org.avromanov.yesihave.image.ImageProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -69,6 +73,44 @@ public class TelegramApiClient {
             // RestClient exceptions can include the request URI and bearer token.
             throw new IllegalStateException("Telegram sendMessage failed");
         }
+    }
+
+    public void sendPhotoPair(Long chatId, String caption, byte[] front, byte[] back) {
+        var body = new LinkedMultiValueMap<String, Object>();
+        body.add("chat_id", chatId.toString());
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        // Leave room for the side label within Telegram's 1024-character caption limit.
+        String title = caption.codePointCount(0, caption.length()) > 900
+                ? caption.substring(0, caption.offsetByCodePoints(0, 899)) + "…" : caption;
+        body.add("media", new HttpEntity<>(List.of(
+                Map.of("type", "photo", "media", "attach://front", "caption", title + "\nЛицевая сторона"),
+                Map.of("type", "photo", "media", "attach://back", "caption", title + "\nОбратная сторона")
+        ), headers));
+        body.add("front", photoResource(front, "front.jpg"));
+        body.add("back", photoResource(back, "back.jpg"));
+        try {
+            JsonNode response = restClient.post()
+                    .uri("https://api.telegram.org/bot{token}/sendMediaGroup", token)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+            if (response == null || !response.path("ok").asBoolean(false)) {
+                throw new IllegalStateException("Telegram sendMediaGroup failed");
+            }
+        } catch (RestClientException e) {
+            throw new IllegalStateException("Telegram sendMediaGroup failed");
+        }
+    }
+
+    private ByteArrayResource photoResource(byte[] bytes, String filename) {
+        return new ByteArrayResource(bytes) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
     }
 
     public byte[] downloadFile(String fileId) {

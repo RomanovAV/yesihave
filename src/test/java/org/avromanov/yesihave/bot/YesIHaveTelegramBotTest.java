@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.AdditionalMatchers.aryEq;
+import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.Mockito.*;
 
 class YesIHaveTelegramBotTest {
@@ -29,6 +30,7 @@ class YesIHaveTelegramBotTest {
     private AddCoasterUseCase add;
     private AddCheckedCoasterUseCase checked;
     private RecordCheckFeedbackUseCase feedback;
+    private CandidatePhotoService photos;
     private YesIHaveTelegramBot bot;
 
     @BeforeEach
@@ -38,6 +40,8 @@ class YesIHaveTelegramBotTest {
         add = mock(AddCoasterUseCase.class);
         checked = mock(AddCheckedCoasterUseCase.class);
         feedback = mock(RecordCheckFeedbackUseCase.class);
+        photos = mock(CandidatePhotoService.class);
+        when(photos.load(any())).thenReturn(new CandidatePhotoService.PhotoPair(new byte[]{3}, new byte[]{4}));
         bot = createBot(Set.of(OWNER));
         when(api.downloadFile("front")).thenReturn(new byte[]{1});
         when(api.downloadFile("back")).thenReturn(new byte[]{2});
@@ -48,20 +52,20 @@ class YesIHaveTelegramBotTest {
 
     private YesIHaveTelegramBot createBot(Set<Long> allowed) {
         return new YesIHaveTelegramBot(new TelegramProperties("test-token", "testbot", Duration.ofMinutes(15), allowed),
-                api, check, add, feedback, checked);
+                api, check, add, feedback, checked, photos);
     }
 
     @Test
     void deniesUnknownUsersBeforeAnyDownloadsOrCollectionAccess() {
         bot.consume(text(456L, "/check"));
         bot.consume(photo(456L, "front"));
-        verifyNoInteractions(api, check, add, checked, feedback);
+        verifyNoInteractions(api, check, add, checked, feedback, photos);
     }
 
     @Test
     void emptyAllowlistFailsClosed() {
         createBot(Set.of()).consume(text(OWNER, "/start"));
-        verifyNoInteractions(api, check, add, checked, feedback);
+        verifyNoInteractions(api, check, add, checked, feedback, photos);
     }
 
     @Test
@@ -72,7 +76,7 @@ class YesIHaveTelegramBotTest {
         Update spoof = text(OWNER, "/check");
         spoof.getMessage().getChat().setId(456L);
         bot.consume(spoof);
-        verifyNoInteractions(api, check, add, checked, feedback);
+        verifyNoInteractions(api, check, add, checked, feedback, photos);
     }
 
     @Test
@@ -99,6 +103,75 @@ class YesIHaveTelegramBotTest {
         bot.consume(text(OWNER, "Совпадение 1"));
         verify(feedback, times(1)).confirmMatch(CHECK_ID, CANDIDATE_ID, FeedbackSource.TELEGRAM);
         verifyNoInteractions(add, checked);
+    }
+
+    @Test
+    void sendsStoredFrontAndBackBeforeSelectionButtons() {
+        performCheck();
+        var order = inOrder(photos, api);
+        order.verify(photos).load(CANDIDATE_ID);
+        order.verify(api).sendPhotoPair(eq(OWNER), eq("Совпадение 1: Guinness — сходство 87.5%"),
+                aryEq(new byte[]{3}), aryEq(new byte[]{4}));
+        order.verify(api).sendMessage(eq(OWNER), contains("1. Guinness"),
+                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
+    }
+
+    @Test
+    void albumsAndButtonsKeepSameOrderAndLimitToThreeCandidates() {
+        var candidates = java.util.stream.IntStream.rangeClosed(1, 4)
+                .mapToObj(i -> new CandidateDto(UUID.randomUUID(), "Coaster " + i, .9, .9, .9, i)).toList();
+        when(check.check(eq(OWNER), any(), any())).thenReturn(new MatchResultDto(
+                MatchDecision.MATCH, .9, .9, .9, candidates.getFirst().coasterId(), candidates, CHECK_ID));
+        performCheck();
+        var order = inOrder(photos, api);
+        for (int i = 0; i < 3; i++) {
+            order.verify(photos).load(candidates.get(i).coasterId());
+            order.verify(api).sendPhotoPair(eq(OWNER), startsWith("Совпадение " + (i + 1) + ": Coaster " + (i + 1)),
+                    any(), any());
+        }
+        verify(photos, never()).load(candidates.get(3).coasterId());
+        verify(api).sendMessage(eq(OWNER), not(contains("4. Coaster")),
+                eq(List.of(List.of("Совпадение 1"), List.of("Совпадение 2"), List.of("Совпадение 3"),
+                        List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
+        bot.consume(text(OWNER, "Совпадение 2"));
+        verify(feedback).confirmMatch(CHECK_ID, candidates.get(1).coasterId(), FeedbackSource.TELEGRAM);
+    }
+
+    @Test
+    void missingPhotosDoNotDiscardCheckOrPreventSaving() {
+        when(photos.load(CANDIDATE_ID)).thenThrow(new IllegalStateException("Storage unavailable"));
+        performCheck();
+        verify(api).sendMessage(eq(OWNER), contains("Не удалось показать фото вариантов: 1."), anyList());
+        bot.consume(text(OWNER, "Сохранить новый"));
+        bot.consume(text(OWNER, "New coaster"));
+        verify(checked).add("New coaster", CHECK_ID, FeedbackSource.TELEGRAM);
+    }
+
+    @Test
+    void failedAlbumDoesNotPreventOtherPhotosOrConfirmation() {
+        UUID secondId = UUID.randomUUID();
+        when(check.check(eq(OWNER), any(), any())).thenReturn(new MatchResultDto(
+                MatchDecision.UNCERTAIN, .85, .9, .875, null,
+                List.of(new CandidateDto(CANDIDATE_ID, "First", .85, .9, .875, 1),
+                        new CandidateDto(secondId, "Second", .8, .8, .8, 2)), CHECK_ID));
+        doThrow(new IllegalStateException("Telegram sendMediaGroup failed")).when(api)
+                .sendPhotoPair(eq(OWNER), startsWith("Совпадение 1:"), any(), any());
+        performCheck();
+        verify(api).sendPhotoPair(eq(OWNER), startsWith("Совпадение 2:"), any(), any());
+        verify(api).sendMessage(eq(OWNER), contains("Не удалось показать фото вариантов: 1."), anyList());
+        bot.consume(text(OWNER, "Совпадение 2"));
+        verify(feedback).confirmMatch(CHECK_ID, secondId, FeedbackSource.TELEGRAM);
+    }
+
+    @Test
+    void emptyCandidatesDoNotLoadOrSendPhotos() {
+        when(check.check(eq(OWNER), any(), any())).thenReturn(new MatchResultDto(
+                MatchDecision.NO_MATCH, null, null, null, null, List.of(), CHECK_ID));
+        performCheck();
+        verifyNoInteractions(photos);
+        verify(api, never()).sendPhotoPair(anyLong(), anyString(), any(), any());
+        verify(api).sendMessage(eq(OWNER), contains("Кандидаты: нет"),
+                eq(List.of(List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
     }
 
     @Test

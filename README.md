@@ -331,7 +331,8 @@ Use `/start` for the action buttons, and `/cancel` to discard the current step.
 - `/check`:
   - send `front` photo
   - send `back` photo
-  - receive match decision + top candidates
+  - receive front/back photo albums for up to three candidates, numbered to match the selection buttons
+  - receive match decision + candidate names and scores; unavailable photos are noted without losing the check
   - confirm a candidate using its button (or `/match <candidate-id>`)
   - choose “Сохранить новый” (or `/new`), then enter a name to reuse the checked photos
   - choose “Не сохранять” (or `/skip`) to record no match without adding
