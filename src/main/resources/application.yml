@@ -33,6 +33,7 @@ app:
     model-version: ${APP_EMBEDDING_MODEL_VERSION:clip-vitb32-openai-preprocess-v2}
     require-active-version: ${APP_EMBEDDING_REQUIRE_ACTIVE_VERSION:true}
   matching:
+    use-confirmed-references: ${APP_MATCH_USE_CONFIRMED_REFERENCES:true}
     match-pair-threshold: ${APP_MATCH_PAIR_THRESHOLD:0.90}
     match-min-side-threshold: ${APP_MATCH_MIN_SIDE_THRESHOLD:0.86}
     uncertain-pair-threshold: ${APP_UNCERTAIN_PAIR_THRESHOLD:0.80}

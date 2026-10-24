@@ -4,10 +4,14 @@ import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.image.ImageProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.telegram.telegrambots.longpolling.TelegramBotsLongPollingApplication;
+import org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,6 +31,15 @@ class TelegramConfigurationTest {
     @Test
     void missingAllowlistDoesNotGrantAccess() {
         runner.run(context -> assertThat(context.getBean(TelegramProperties.class).allowedUserIds()).isEmpty());
+    }
+
+    @Test
+    void starterUsesTheBoundedPollingApplicationWithoutDuplicateBeans() {
+        runner.withConfiguration(AutoConfigurations.of(TelegramBotStarterConfiguration.class))
+                .withUserConfiguration(TelegramPollingConfiguration.class)
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .run(context -> assertThat(context).hasNotFailed()
+                        .hasSingleBean(TelegramBotsLongPollingApplication.class));
     }
 
     @Configuration(proxyBeanMethods = false)

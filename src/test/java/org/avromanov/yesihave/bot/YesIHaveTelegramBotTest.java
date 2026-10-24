@@ -167,14 +167,14 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
-    void sendsStoredFrontAndBackBeforeSelectionButtons() {
+    void deliversResultBeforeUploadingCandidatePhotos() {
         performCheck();
         var order = inOrder(photos, api);
+        order.verify(api).sendMessage(eq(OWNER), contains("1. Guinness"),
+                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
         order.verify(photos).load(CANDIDATE_ID);
         order.verify(api).sendPhotoPair(eq(OWNER), eq("Совпадение 1: Guinness — сходство 87.5%"),
                 aryEq(new byte[]{3}), aryEq(new byte[]{4}));
-        order.verify(api).sendMessage(eq(OWNER), contains("1. Guinness"),
-                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
     }
 
     @Test
@@ -248,6 +248,16 @@ class YesIHaveTelegramBotTest {
         verify(api, never()).sendPhotoPair(anyLong(), anyString(), any(), any());
         verify(api).sendMessage(eq(OWNER), contains("Кандидаты: нет"),
                 eq(List.of(List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
+    }
+
+    @Test
+    void failedPreviewNoticeKeepsAlreadyDeliveredResultAvailableForConfirmation() {
+        when(photos.load(CANDIDATE_ID)).thenThrow(new IllegalStateException("Storage unavailable"));
+        doThrow(new IllegalStateException("Telegram unavailable")).when(api)
+                .sendMessage(eq(OWNER), startsWith("Не удалось показать фото"), anyList());
+        performCheck();
+        bot.consume(text(OWNER, "Совпадение 1"));
+        verify(feedback).confirmMatch(CHECK_ID, CANDIDATE_ID, FeedbackSource.TELEGRAM);
     }
 
     @Test

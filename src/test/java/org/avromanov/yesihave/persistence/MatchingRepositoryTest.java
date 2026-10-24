@@ -13,6 +13,22 @@ import static org.mockito.Mockito.*;
 
 class MatchingRepositoryTest {
     @Test
+    void disablingReferencesUsesOriginalsForRetrievalAndScoring() {
+        var jdbc = mock(JdbcTemplate.class);
+        var repository = new MatchingRepository(jdbc, false);
+        var vector = new float[]{1, 0};
+        repository.findTopFrontIds("test", vector, 20);
+        repository.findTopBackIds("test", vector, 20);
+        repository.scoreCandidates("test", List.of(UUID.randomUUID()), vector, vector);
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(3)).query(sql.capture(), any(RowMapper.class), any(Object[].class));
+        assertThat(sql.getAllValues()).allSatisfy(query -> {
+            assertThat(query).contains("FROM coaster_embeddings").doesNotContain("coaster_matching_embeddings");
+        });
+        assertThat(sql.getAllValues().getLast()).contains("NULL::uuid AS source_check_request_id");
+    }
+
+    @Test
     void choosesOneCompleteReferencePairAndReturnsEachCoasterOnce() {
         var jdbc = mock(JdbcTemplate.class);
         UUID coaster = UUID.randomUUID(), other = UUID.randomUUID();

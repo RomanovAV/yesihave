@@ -3,6 +3,8 @@ package org.avromanov.yesihave.persistence;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
@@ -14,6 +16,8 @@ import java.util.UUID;
 @Repository
 public class MatchingRepository {
     private final JdbcTemplate jdbcTemplate;
+    private final String matchingSource;
+    private final String referenceColumn;
 
     private final RowMapper<MatchedCandidateRow> scoredRowMapper = (rs, rowNum) -> MatchedCandidateRow.bestOrientation(
             UUID.fromString(rs.getString("coaster_id")),
@@ -26,7 +30,15 @@ public class MatchingRepository {
     );
 
     public MatchingRepository(JdbcTemplate jdbcTemplate) {
+        this(jdbcTemplate, true);
+    }
+
+    @Autowired
+    public MatchingRepository(JdbcTemplate jdbcTemplate,
+                              @Value("${app.matching.use-confirmed-references:true}") boolean useConfirmedReferences) {
         this.jdbcTemplate = jdbcTemplate;
+        this.matchingSource = useConfirmedReferences ? "coaster_matching_embeddings" : "coaster_embeddings";
+        this.referenceColumn = useConfirmedReferences ? "ce.source_check_request_id" : "NULL::uuid";
     }
 
     public void upsertEmbedding(UUID coasterId, String modelVersion, float[] frontVector, float[] backVector) {
@@ -51,12 +63,12 @@ public class MatchingRepository {
         return jdbcTemplate.query(
                 """
                 SELECT coaster_id
-                FROM coaster_matching_embeddings
+                FROM %s
                 WHERE model_version = ?
                 GROUP BY coaster_id
                 ORDER BY MIN(front_vector <=> ?::vector), coaster_id
                 LIMIT ?
-                """,
+                """.formatted(matchingSource),
                 (rs, rowNum) -> UUID.fromString(rs.getString("coaster_id")),
                 modelVersion,
                 VectorSql.toVectorLiteral(frontVector),
@@ -68,12 +80,12 @@ public class MatchingRepository {
         return jdbcTemplate.query(
                 """
                 SELECT coaster_id
-                FROM coaster_matching_embeddings
+                FROM %s
                 WHERE model_version = ?
                 GROUP BY coaster_id
                 ORDER BY MIN(back_vector <=> ?::vector), coaster_id
                 LIMIT ?
-                """,
+                """.formatted(matchingSource),
                 (rs, rowNum) -> UUID.fromString(rs.getString("coaster_id")),
                 modelVersion,
                 VectorSql.toVectorLiteral(backVector),
@@ -93,15 +105,16 @@ public class MatchingRepository {
         String sql = """
                 SELECT ce.coaster_id,
                        c.name,
-                       ce.source_check_request_id,
+                       %s AS source_check_request_id,
                        1 - (ce.front_vector <=> ?::vector) AS score_front,
                        1 - (ce.back_vector <=> ?::vector) AS score_back,
                        1 - (ce.back_vector <=> ?::vector) AS score_front_to_back,
                        1 - (ce.front_vector <=> ?::vector) AS score_back_to_front
-                FROM coaster_matching_embeddings ce
+                FROM %s ce
                 JOIN coasters c ON c.id = ce.coaster_id
                 WHERE ce.model_version = ?
-                  AND ce.coaster_id IN (""" + placeholders + ") ORDER BY ce.source_check_request_id NULLS FIRST";
+                  AND ce.coaster_id IN (""".formatted(referenceColumn, matchingSource)
+                + placeholders + ") ORDER BY source_check_request_id NULLS FIRST";
 
         Object[] args = new Object[5 + coasterIds.size()];
         args[0] = VectorSql.toVectorLiteral(frontVector);

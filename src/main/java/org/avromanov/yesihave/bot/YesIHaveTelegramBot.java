@@ -73,6 +73,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
 
     @Override
     public void consume(Update update) {
+        long started = System.nanoTime();
         purgeExpiredSessions();
         if (!update.hasMessage()) {
             return;
@@ -107,6 +108,8 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             sessions.remove(chatId);
             log.error("Telegram update processing failed for chat {}, type={}", chatId, e.getClass().getSimpleName());
             menu(chatId, "Не удалось обработать запрос. Начните заново: проверка или добавление.");
+        } finally {
+            log.info("Telegram update completed updateId={} elapsedMs={}", update.getUpdateId(), elapsedMs(started));
         }
     }
 
@@ -216,7 +219,9 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                 .max(Comparator.comparingLong(photo -> (long) photo.getWidth() * photo.getHeight()))
                 .orElseThrow();
 
+        long downloadStarted = System.nanoTime();
         byte[] bytes = telegramApiClient.downloadFile(bestPhoto.getFileId());
+        log.info("Telegram photo downloaded bytes={} elapsedMs={}", bytes.length, elapsedMs(downloadStarted));
 
         if (session.state() == TelegramSessionState.WAIT_FRONT) {
             session.setFrontImage(bytes);
@@ -237,9 +242,20 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             }
             keyboard.add(List.of("Сохранить новый", "Не сохранять"));
             keyboard.add(List.of("Отмена"));
+            // Deliver the decision before optional photo uploads can delay it.
+            telegramApiClient.sendMessage(chatId,
+                    formatMatchResult(result) + "\n\nВыберите совпадение или сохраните новую находку.", keyboard);
+            long previewsStarted = System.nanoTime();
             List<Integer> unavailablePhotos = new ArrayList<>();
             for (int i = 0; i < candidates.size(); i++) {
+                if (elapsedMs(previewsStarted) >= 30_000) {
+                    for (int remaining = i; remaining < candidates.size(); remaining++) {
+                        unavailablePhotos.add(remaining + 1);
+                    }
+                    break;
+                }
                 CandidateDto candidate = candidates.get(i);
+                long previewStarted = System.nanoTime();
                 try {
                     var photos = candidate.referenceCheckRequestId() == null
                             ? candidatePhotoService.load(candidate.coasterId())
@@ -252,16 +268,22 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                     unavailablePhotos.add(i + 1);
                     log.warn("Candidate photos unavailable for coaster {}, type={}",
                             candidate.coasterId(), e.getClass().getSimpleName());
+                } finally {
+                    log.info("Telegram candidate preview checkId={} rank={} elapsedMs={}",
+                            result.checkRequestId(), i + 1, elapsedMs(previewStarted));
                 }
             }
-            telegramApiClient.sendMessage(
-                    chatId,
-                    formatMatchResult(result)
-                            + (unavailablePhotos.isEmpty() ? "" : "\nНе удалось показать фото вариантов: "
-                            + unavailablePhotos.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", ")) + ".")
-                            + "\n\nВыберите совпадение или сохраните новую находку.",
-                    keyboard
-            );
+            if (!unavailablePhotos.isEmpty()) {
+                try {
+                    telegramApiClient.sendMessage(chatId, "Не удалось показать фото вариантов: "
+                            + unavailablePhotos.stream().map(String::valueOf)
+                            .collect(java.util.stream.Collectors.joining(", ")) + ".", keyboard);
+                } catch (RuntimeException e) {
+                    // The result was delivered; keep its feedback session usable.
+                    log.warn("Telegram preview notice failed checkId={}, type={}",
+                            result.checkRequestId(), e.getClass().getSimpleName());
+                }
+            }
             return;
         }
 
@@ -357,6 +379,10 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             return "n/a";
         }
         return String.format(Locale.ROOT, "%.1f%%", score * 100);
+    }
+
+    private static long elapsedMs(long started) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
 
     private void menu(Long chatId, String text) {

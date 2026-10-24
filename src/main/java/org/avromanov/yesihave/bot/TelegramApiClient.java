@@ -10,7 +10,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -18,7 +18,6 @@ import org.springframework.web.client.RestClientException;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
-import java.time.Duration;
 
 @Component
 @ConditionalOnExpression("'${app.telegram.token:}'.length() > 0")
@@ -46,9 +45,7 @@ public class TelegramApiClient {
     }
 
     private static RestClient defaultRestClient() {
-        var factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(10));
-        factory.setReadTimeout(Duration.ofSeconds(30));
+        var factory = new OkHttp3ClientHttpRequestFactory(TelegramHttpClients.apiClient());
         return RestClient.builder().requestFactory(factory).build();
     }
 

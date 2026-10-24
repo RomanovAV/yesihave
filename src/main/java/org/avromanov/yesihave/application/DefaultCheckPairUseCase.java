@@ -15,6 +15,8 @@ import org.avromanov.yesihave.storage.ObjectStorageWriteBatch;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,6 +27,7 @@ import java.util.Set;
 
 @Service
 public class DefaultCheckPairUseCase implements CheckPairUseCase {
+    private static final Logger log = LoggerFactory.getLogger(DefaultCheckPairUseCase.class);
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
     private final CheckAuditRepository checkAuditRepository;
@@ -57,11 +60,14 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
 
     @Override
     public MatchResultDto check(long telegramUserId, byte[] frontImage, byte[] backImage) {
+        long started = System.nanoTime();
         frontImage = normalize(frontImage);
         backImage = normalize(backImage);
+        long normalized = System.nanoTime();
 
         float[] frontEmbedding = embeddingService.toEmbedding(frontImage);
         float[] backEmbedding = embeddingService.toEmbedding(backImage);
+        long embedded = System.nanoTime();
 
         List<MatchedCandidateRow> scoredRows = fetchScoredCandidates(frontEmbedding, backEmbedding);
         List<CandidateDto> rankedCandidates = rankCandidates(scoredRows);
@@ -72,7 +78,8 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
         var matchedCoasterId = decision == MatchDecision.MATCH && best != null ? best.coasterId() : null;
         byte[] normalizedFront = frontImage;
         byte[] normalizedBack = backImage;
-        return objectStorageWriteBatch.execute(uploads -> {
+        long matched = System.nanoTime();
+        MatchResultDto completed = objectStorageWriteBatch.execute(uploads -> {
             String frontImageKey = uploads.putImage("checks/front", normalizedFront);
             String backImageKey = uploads.putImage("checks/back", normalizedBack);
 
@@ -104,6 +111,15 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
             });
             return Objects.requireNonNull(result, "Check transaction returned no result");
         });
+        long finished = System.nanoTime();
+        log.info("Check completed checkId={} normalizeMs={} embeddingMs={} matchingMs={} persistMs={} totalMs={}",
+                completed.checkRequestId(), millis(normalized - started), millis(embedded - normalized),
+                millis(matched - embedded), millis(finished - matched), millis(finished - started));
+        return completed;
+    }
+
+    private static long millis(long nanos) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(nanos);
     }
 
     private byte[] normalize(byte[] image) {
