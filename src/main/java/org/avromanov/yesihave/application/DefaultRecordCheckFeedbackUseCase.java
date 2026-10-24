@@ -4,6 +4,7 @@ import org.avromanov.yesihave.application.model.FeedbackSource;
 import org.avromanov.yesihave.application.model.FeedbackVerdict;
 import org.avromanov.yesihave.persistence.CheckFeedbackRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -11,9 +12,12 @@ import java.util.UUID;
 @Service
 public class DefaultRecordCheckFeedbackUseCase implements RecordCheckFeedbackUseCase {
     private final CheckFeedbackRepository checkFeedbackRepository;
+    private final ApplicationEventPublisher events;
 
-    public DefaultRecordCheckFeedbackUseCase(CheckFeedbackRepository checkFeedbackRepository) {
+    public DefaultRecordCheckFeedbackUseCase(CheckFeedbackRepository checkFeedbackRepository,
+                                             ApplicationEventPublisher events) {
         this.checkFeedbackRepository = checkFeedbackRepository;
+        this.events = events;
     }
 
     @Override
@@ -33,6 +37,7 @@ public class DefaultRecordCheckFeedbackUseCase implements RecordCheckFeedbackUse
                 null,
                 requireSource(source)
         );
+        events.publishEvent(new ConfirmedReferenceIndexer.ConfirmedCheck(checkRequestId));
     }
 
     @Override

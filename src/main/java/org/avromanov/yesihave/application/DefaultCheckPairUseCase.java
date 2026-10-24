@@ -6,7 +6,9 @@ import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
+import org.avromanov.yesihave.image.ImagePairFingerprint;
 import org.avromanov.yesihave.persistence.CheckAuditRepository;
+import org.avromanov.yesihave.persistence.CheckEmbeddingRepository;
 import org.avromanov.yesihave.persistence.MatchedCandidateRow;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.storage.ObjectStorageWriteBatch;
@@ -26,6 +28,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     private final EmbeddingService embeddingService;
     private final MatchingRepository matchingRepository;
     private final CheckAuditRepository checkAuditRepository;
+    private final CheckEmbeddingRepository checkEmbeddingRepository;
     private final ObjectStorageWriteBatch objectStorageWriteBatch;
     private final MatchingProperties matchingProperties;
     private final EmbeddingProperties embeddingProperties;
@@ -35,6 +38,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
     public DefaultCheckPairUseCase(EmbeddingService embeddingService,
                                    MatchingRepository matchingRepository,
                                    CheckAuditRepository checkAuditRepository,
+                                   CheckEmbeddingRepository checkEmbeddingRepository,
                                    ObjectStorageWriteBatch objectStorageWriteBatch,
                                    MatchingProperties matchingProperties,
                                    EmbeddingProperties embeddingProperties,
@@ -43,6 +47,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
         this.embeddingService = embeddingService;
         this.matchingRepository = matchingRepository;
         this.checkAuditRepository = checkAuditRepository;
+        this.checkEmbeddingRepository = checkEmbeddingRepository;
         this.objectStorageWriteBatch = objectStorageWriteBatch;
         this.matchingProperties = matchingProperties;
         this.embeddingProperties = embeddingProperties;
@@ -84,6 +89,8 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
                         matchedCoasterId
                 );
                 checkAuditRepository.insertCandidates(requestId, rankedCandidates);
+                checkEmbeddingRepository.upsert(requestId, embeddingProperties.modelVersion(),
+                        ImagePairFingerprint.of(normalizedFront, normalizedBack), frontEmbedding, backEmbedding);
 
                 return new MatchResultDto(
                         decision,
@@ -153,7 +160,8 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
                     row.scoreFront(),
                     row.scoreBack(),
                     pairScore(row),
-                    rank++
+                    rank++,
+                    row.referenceCheckRequestId()
             ));
         }
         return result;

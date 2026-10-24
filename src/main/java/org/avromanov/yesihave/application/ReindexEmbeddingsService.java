@@ -4,6 +4,8 @@ import org.avromanov.yesihave.image.EmbeddingPipelineDescriptor;
 import org.avromanov.yesihave.image.EmbeddingPipelineDescriptorProvider;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
+import org.avromanov.yesihave.image.ImagePairFingerprint;
+import org.avromanov.yesihave.persistence.CheckEmbeddingRepository;
 import org.avromanov.yesihave.persistence.CoasterReadRepository;
 import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
@@ -24,6 +26,7 @@ public class ReindexEmbeddingsService {
     private final EmbeddingPipelineDescriptorProvider descriptorProvider;
     private final EmbeddingVersionRepository embeddingVersionRepository;
     private final ImageBytesNormalizer imageBytesNormalizer;
+    private final CheckEmbeddingRepository checkEmbeddingRepository;
 
     public ReindexEmbeddingsService(CoasterReadRepository coasterReadRepository,
                                     ObjectStorageService objectStorageService,
@@ -31,7 +34,8 @@ public class ReindexEmbeddingsService {
                                     MatchingRepository matchingRepository,
                                     EmbeddingPipelineDescriptorProvider descriptorProvider,
                                     EmbeddingVersionRepository embeddingVersionRepository,
-                                    ImageBytesNormalizer imageBytesNormalizer) {
+                                    ImageBytesNormalizer imageBytesNormalizer,
+                                    CheckEmbeddingRepository checkEmbeddingRepository) {
         this.coasterReadRepository = coasterReadRepository;
         this.objectStorageService = objectStorageService;
         this.embeddingService = embeddingService;
@@ -39,6 +43,7 @@ public class ReindexEmbeddingsService {
         this.descriptorProvider = descriptorProvider;
         this.embeddingVersionRepository = embeddingVersionRepository;
         this.imageBytesNormalizer = imageBytesNormalizer;
+        this.checkEmbeddingRepository = checkEmbeddingRepository;
     }
 
     public int reindexAll() {
@@ -73,8 +78,29 @@ public class ReindexEmbeddingsService {
             }
             afterCoasterId = pairs.getLast().coasterId();
         }
+        processed += reindexConfirmed(descriptor.modelVersion());
         embeddingVersionRepository.activate(descriptor);
         return processed;
+    }
+
+    private int reindexConfirmed(String modelVersion) {
+        int processed = 0;
+        UUID afterId = null;
+        while (true) {
+            var pairs = checkEmbeddingRepository.findConfirmedNeedingReindex(modelVersion, afterId, BATCH_SIZE);
+            if (pairs.isEmpty()) {
+                return processed;
+            }
+            for (var pair : pairs) {
+                byte[] front = normalize(objectStorageService.getBytes(pair.frontKey()));
+                byte[] back = normalize(objectStorageService.getBytes(pair.backKey()));
+                checkEmbeddingRepository.upsert(pair.checkRequestId(), modelVersion,
+                        ImagePairFingerprint.of(front, back),
+                        embeddingService.toEmbedding(front), embeddingService.toEmbedding(back));
+                processed++;
+            }
+            afterId = pairs.getLast().checkRequestId();
+        }
     }
 
     private byte[] normalize(byte[] image) {

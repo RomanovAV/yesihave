@@ -89,6 +89,17 @@ public class EmbeddingVersionRepository {
             );
         }
 
+        Long missingReferences = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM check_feedback f
+                LEFT JOIN check_embeddings e ON e.check_request_id = f.check_request_id AND e.model_version = ?
+                WHERE f.verdict = 'MATCH' AND e.check_request_id IS NULL
+                """, Long.class, descriptor.modelVersion());
+        if (missingReferences != null && missingReferences > 0L) {
+            throw new IllegalStateException("Cannot activate embedding version '%s': %d confirmed check(s) are not indexed"
+                    .formatted(descriptor.modelVersion(), missingReferences));
+        }
+
         jdbcTemplate.update(
                 """
                 UPDATE embedding_model_versions

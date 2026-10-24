@@ -54,9 +54,10 @@ public class CheckAuditRepository {
             jdbcTemplate.update(
                     """
                     INSERT INTO check_candidates(
-                      id, check_request_id, coaster_id, score_front, score_back, pair_score, rank_num
+                      id, check_request_id, coaster_id, score_front, score_back, pair_score, rank_num,
+                      reference_check_request_id
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     UUID.randomUUID(),
                     checkRequestId,
@@ -64,7 +65,8 @@ public class CheckAuditRepository {
                     candidate.scoreFront(),
                     candidate.scoreBack(),
                     candidate.pairScore(),
-                    candidate.rank()
+                    candidate.rank(),
+                    candidate.referenceCheckRequestId()
             );
         }
     }

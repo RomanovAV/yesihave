@@ -31,6 +31,19 @@ public class CandidatePhotoService {
     public PhotoPair load(UUID coasterId) {
         var pair = repository.findImagePair(coasterId)
                 .orElseThrow(() -> new IllegalStateException("Candidate photos not found"));
+        return loadPair(pair);
+    }
+
+    public PhotoPair load(UUID coasterId, UUID referenceCheckRequestId) {
+        if (referenceCheckRequestId == null) {
+            return load(coasterId);
+        }
+        var pair = repository.findReferenceImagePair(coasterId, referenceCheckRequestId)
+                .orElseThrow(() -> new IllegalStateException("Candidate reference is no longer confirmed"));
+        return loadPair(pair);
+    }
+
+    private PhotoPair loadPair(CoasterReadRepository.CoasterImagePair pair) {
         try {
             return new PhotoPair(preview(pair.frontKey()), preview(pair.backKey()));
         } catch (IOException e) {

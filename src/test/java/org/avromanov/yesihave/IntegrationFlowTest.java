@@ -14,12 +14,15 @@ import org.avromanov.yesihave.application.model.MatchDecision;
 import org.avromanov.yesihave.application.model.MatchResultDto;
 import org.avromanov.yesihave.image.EmbeddingPipelineDescriptor;
 import org.avromanov.yesihave.image.EmbeddingService;
+import org.avromanov.yesihave.image.ImagePairFingerprint;
+import org.avromanov.yesihave.persistence.CheckEmbeddingRepository;
 import org.avromanov.yesihave.persistence.EmbeddingVersionRepository;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.persistence.CoasterReadRepository;
 import org.avromanov.yesihave.storage.ObjectStorageService;
 import org.avromanov.yesihave.storage.StorageProperties;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -110,6 +113,16 @@ class IntegrationFlowTest {
 
     @Autowired
     ObjectStorageService objectStorageService;
+
+    @Autowired
+    CheckEmbeddingRepository checkEmbeddingRepository;
+
+    @BeforeEach
+    void resetDatabase() {
+        jdbcTemplate.execute("TRUNCATE check_requests, coasters, embedding_model_versions CASCADE");
+        embeddingVersionRepository.ensureActiveForApplication(new EmbeddingPipelineDescriptor(
+                "test-v1", "deterministic", "builtin:sha256-repeat-v1", "normalized-image-bytes-v1", 512));
+    }
 
     @Test
     void candidatePhotosResolveToStoredSidesOfRequestedCoaster() throws Exception {
@@ -206,6 +219,10 @@ class IntegrationFlowTest {
                 frontEmbedding,
                 backEmbedding
         );
+        assertThatThrownBy(() -> embeddingVersionRepository.activate(nextVersion))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("confirmed check(s)");
+        checkEmbeddingRepository.upsert(result.checkRequestId(), nextVersion.modelVersion(),
+                ImagePairFingerprint.of(front, back), frontEmbedding, backEmbedding);
         embeddingVersionRepository.activate(nextVersion);
 
         Integer storedVersions = jdbcTemplate.queryForObject(

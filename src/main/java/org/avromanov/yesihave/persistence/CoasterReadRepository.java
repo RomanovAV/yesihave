@@ -31,6 +31,17 @@ public class CoasterReadRepository {
         ).stream().findFirst();
     }
 
+    public Optional<CoasterImagePair> findReferenceImagePair(UUID coasterId, UUID checkRequestId) {
+        return jdbcTemplate.query("""
+                SELECT r.front_image_key, r.back_image_key
+                FROM check_requests r
+                JOIN check_feedback f ON f.check_request_id = r.id
+                WHERE r.id = ? AND f.verdict = 'MATCH' AND f.matched_coaster_id = ?
+                """, (rs, rowNum) -> new CoasterImagePair(coasterId,
+                rs.getString("front_image_key"), rs.getString("back_image_key")),
+                checkRequestId, coasterId).stream().findFirst();
+    }
+
     public List<CoasterImagePair> findPairsNeedingReindex(String modelVersion,
                                                           UUID afterCoasterId,
                                                           int limit) {

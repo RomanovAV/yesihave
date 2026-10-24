@@ -25,6 +25,27 @@ class CandidatePhotoServiceTest {
     private final UUID id = UUID.randomUUID();
 
     @Test
+    void loadsTheSelectedReferenceRatherThanTheOriginalPair() throws Exception {
+        UUID reference = UUID.randomUUID();
+        when(repository.findReferenceImagePair(id, reference)).thenReturn(Optional.of(
+                new CoasterReadRepository.CoasterImagePair(id, "reference-front", "reference-back")));
+        when(storage.getBytes("reference-front")).thenReturn(png(100, 100, Color.GREEN));
+        when(storage.getBytes("reference-back")).thenReturn(png(100, 100, Color.RED));
+        var photos = service.load(id, reference);
+        var front = ImageIO.read(new ByteArrayInputStream(photos.front()));
+        assertThat(new Color(front.getRGB(50, 50)).getGreen()).isGreaterThan(240);
+        verify(repository, never()).findImagePair(any());
+    }
+
+    @Test
+    void revokedReferenceIsNotShownAsEvidenceOfAMatch() {
+        UUID reference = UUID.randomUUID();
+        when(repository.findReferenceImagePair(id, reference)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.load(id, reference)).hasMessageContaining("no longer confirmed");
+        verifyNoInteractions(storage);
+    }
+
+    @Test
     void loadsCorrectSidesAndCreatesJpegPreviewsWithoutCropping() throws Exception {
         pair();
         when(storage.getBytes("front-key")).thenReturn(png(2560, 1280, Color.RED));

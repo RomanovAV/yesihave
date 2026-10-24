@@ -7,6 +7,8 @@ import org.springframework.stereotype.Repository;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.UUID;
 
 @Repository
@@ -19,7 +21,8 @@ public class MatchingRepository {
             rs.getDouble("score_front"),
             rs.getDouble("score_back"),
             rs.getDouble("score_front_to_back"),
-            rs.getDouble("score_back_to_front")
+            rs.getDouble("score_back_to_front"),
+            rs.getObject("source_check_request_id", UUID.class)
     );
 
     public MatchingRepository(JdbcTemplate jdbcTemplate) {
@@ -48,9 +51,10 @@ public class MatchingRepository {
         return jdbcTemplate.query(
                 """
                 SELECT coaster_id
-                FROM coaster_embeddings
+                FROM coaster_matching_embeddings
                 WHERE model_version = ?
-                ORDER BY front_vector <=> ?::vector
+                GROUP BY coaster_id
+                ORDER BY MIN(front_vector <=> ?::vector), coaster_id
                 LIMIT ?
                 """,
                 (rs, rowNum) -> UUID.fromString(rs.getString("coaster_id")),
@@ -64,9 +68,10 @@ public class MatchingRepository {
         return jdbcTemplate.query(
                 """
                 SELECT coaster_id
-                FROM coaster_embeddings
+                FROM coaster_matching_embeddings
                 WHERE model_version = ?
-                ORDER BY back_vector <=> ?::vector
+                GROUP BY coaster_id
+                ORDER BY MIN(back_vector <=> ?::vector), coaster_id
                 LIMIT ?
                 """,
                 (rs, rowNum) -> UUID.fromString(rs.getString("coaster_id")),
@@ -88,14 +93,15 @@ public class MatchingRepository {
         String sql = """
                 SELECT ce.coaster_id,
                        c.name,
+                       ce.source_check_request_id,
                        1 - (ce.front_vector <=> ?::vector) AS score_front,
                        1 - (ce.back_vector <=> ?::vector) AS score_back,
                        1 - (ce.back_vector <=> ?::vector) AS score_front_to_back,
                        1 - (ce.front_vector <=> ?::vector) AS score_back_to_front
-                FROM coaster_embeddings ce
+                FROM coaster_matching_embeddings ce
                 JOIN coasters c ON c.id = ce.coaster_id
                 WHERE ce.model_version = ?
-                  AND ce.coaster_id IN (""" + placeholders + ") ";
+                  AND ce.coaster_id IN (""" + placeholders + ") ORDER BY ce.source_check_request_id NULLS FIRST";
 
         Object[] args = new Object[5 + coasterIds.size()];
         args[0] = VectorSql.toVectorLiteral(frontVector);
@@ -107,6 +113,14 @@ public class MatchingRepository {
             args[i + 5] = coasterIds.get(i);
         }
 
-        return jdbcTemplate.query(sql, scoredRowMapper, args);
+        var bestByCoaster = new LinkedHashMap<UUID, MatchedCandidateRow>();
+        for (var row : jdbcTemplate.query(sql, scoredRowMapper, args)) {
+            // Keep both sides from one reference pair. Independent side maxima
+            // across photos could manufacture a match that no pair supports.
+            bestByCoaster.merge(row.coasterId(), row, (first, second) ->
+                    second.scoreFront() + second.scoreBack() > first.scoreFront() + first.scoreBack()
+                            ? second : first);
+        }
+        return new ArrayList<>(bestByCoaster.values());
     }
 }

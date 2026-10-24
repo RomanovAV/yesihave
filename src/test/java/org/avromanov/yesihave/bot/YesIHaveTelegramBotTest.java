@@ -178,6 +178,21 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
+    void showsTheReferencePairThatProducedTheCandidateScore() {
+        UUID reference = UUID.randomUUID();
+        when(check.check(eq(OWNER), any(), any())).thenReturn(new MatchResultDto(
+                MatchDecision.MATCH, .95, .95, .95, CANDIDATE_ID,
+                List.of(new CandidateDto(CANDIDATE_ID, "Guinness", .95, .95, .95, 1, reference)), CHECK_ID));
+        when(photos.load(CANDIDATE_ID, reference)).thenReturn(
+                new CandidatePhotoService.PhotoPair(new byte[]{5}, new byte[]{6}));
+        performCheck();
+        verify(photos).load(CANDIDATE_ID, reference);
+        verify(photos, never()).load(CANDIDATE_ID);
+        verify(api).sendPhotoPair(eq(OWNER), startsWith("Совпадение 1:"),
+                aryEq(new byte[]{5}), aryEq(new byte[]{6}));
+    }
+
+    @Test
     void albumsAndButtonsKeepSameOrderAndLimitToThreeCandidates() {
         var candidates = java.util.stream.IntStream.rangeClosed(1, 4)
                 .mapToObj(i -> new CandidateDto(UUID.randomUUID(), "Coaster " + i, .9, .9, .9, i)).toList();

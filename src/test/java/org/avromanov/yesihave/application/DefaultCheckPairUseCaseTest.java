@@ -6,6 +6,7 @@ import org.avromanov.yesihave.image.EmbeddingProperties;
 import org.avromanov.yesihave.image.EmbeddingService;
 import org.avromanov.yesihave.image.ImageBytesNormalizer;
 import org.avromanov.yesihave.persistence.CheckAuditRepository;
+import org.avromanov.yesihave.persistence.CheckEmbeddingRepository;
 import org.avromanov.yesihave.persistence.MatchedCandidateRow;
 import org.avromanov.yesihave.persistence.MatchingRepository;
 import org.avromanov.yesihave.storage.ObjectStorageWriteBatch;
@@ -27,6 +28,7 @@ class DefaultCheckPairUseCaseTest {
         var embeddings = mock(EmbeddingService.class);
         var repository = mock(MatchingRepository.class);
         var audit = mock(CheckAuditRepository.class);
+        var checkEmbeddings = mock(CheckEmbeddingRepository.class);
         var normalizer = mock(ImageBytesNormalizer.class);
         var writes = mock(ObjectStorageWriteBatch.class);
         var uploads = mock(ObjectStorageWriteBatch.UploadScope.class);
@@ -37,6 +39,9 @@ class DefaultCheckPairUseCaseTest {
         float[] backVector = {0, 1};
         UUID directId = UUID.randomUUID();
         UUID reversedId = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        when(audit.insertCheckRequest(anyLong(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(requestId);
         when(normalizer.normalize(front)).thenReturn(front);
         when(normalizer.normalize(back)).thenReturn(back);
         when(embeddings.toEmbedding(front)).thenReturn(frontVector);
@@ -53,7 +58,7 @@ class DefaultCheckPairUseCaseTest {
             Function<ObjectStorageWriteBatch.UploadScope, MatchResultDto> operation = invocation.getArgument(0);
             return operation.apply(uploads);
         });
-        var useCase = new DefaultCheckPairUseCase(embeddings, repository, audit, writes,
+        var useCase = new DefaultCheckPairUseCase(embeddings, repository, audit, checkEmbeddings, writes,
                 new MatchingProperties(0.90, 0.86, 0.80, 0.75, 0.05, 20, 3),
                 new EmbeddingProperties("deterministic", "", "", "", 2, "test"),
                 normalizer, transactions);
@@ -64,5 +69,7 @@ class DefaultCheckPairUseCaseTest {
         assertThat(result.matchedCoasterId()).isEqualTo(reversedId);
         assertThat(result.topCandidates()).extracting(c -> c.coasterId()).containsExactly(reversedId, directId);
         verify(repository).scoreCandidates("test", List.of(directId, reversedId), frontVector, backVector);
+        verify(checkEmbeddings).upsert(requestId, "test",
+                org.avromanov.yesihave.image.ImagePairFingerprint.of(front, back), frontVector, backVector);
     }
 }

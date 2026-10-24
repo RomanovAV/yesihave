@@ -241,7 +241,9 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             for (int i = 0; i < candidates.size(); i++) {
                 CandidateDto candidate = candidates.get(i);
                 try {
-                    var photos = candidatePhotoService.load(candidate.coasterId());
+                    var photos = candidate.referenceCheckRequestId() == null
+                            ? candidatePhotoService.load(candidate.coasterId())
+                            : candidatePhotoService.load(candidate.coasterId(), candidate.referenceCheckRequestId());
                     telegramApiClient.sendPhotoPair(chatId,
                             "Совпадение " + (i + 1) + ": " + candidate.name()
                                     + " — сходство " + formatScore(candidate.pairScore()),

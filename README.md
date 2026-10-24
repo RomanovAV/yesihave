@@ -369,3 +369,49 @@ While naming a new coaster, extra photos leave the current save step intact.
 
 Abandoned Telegram sessions expire after 15 minutes; completed sessions release
 their photo buffers immediately.
+
+## Confirmed photo references
+
+Every check caches its normalized image-pair fingerprint and model-versioned
+vectors in the same transaction as its audit record. Explicit `MATCH` feedback
+makes that pair available as another reference for the confirmed coaster.
+Automatic predictions, cancellations, and `NO_MATCH` feedback do not enroll
+references. Corrections and revocations affect matching immediately.
+
+The matching view excludes pairs identical to an original, deduplicates retries
+including reversed sides, and excludes identical pairs with conflicting coaster
+labels. Each candidate uses one complete reference pair and appears only once
+in the result. Telegram shows the pair that actually produced its winning score;
+`referenceCheckRequestId` in candidate responses and
+`check_candidates.reference_check_request_id` identify that pair (null means the
+original collection photos). A revoked reference is not shown as match evidence.
+
+Old confirmations without a current-version cache are indexed after the feedback
+transaction commits. An indexing failure preserves the feedback and logs the
+check id for recovery with `make reindex`. Reindex handles both originals and
+confirmed references, and activation requires both to be complete. Storage
+continues to reference the original audit photos; no extra image copies are made.
+
+For an offline chronological comparison, export coaster/check metadata and
+vectors, embed normalized audit photos with the existing ONNX pipeline, and run:
+
+```bash
+.venv/bin/python scripts/evaluate-photo-references.py snapshot.jsonl vectors/ queries/ --output target/reference-evaluation/results
+```
+
+The exporter format is documented in the script and the 24 October evaluation
+report [for confirmed references](docs/confirmed-references-evaluation-20261024.md).
+Use `scripts/export-matching-snapshot.sql` to capture the read-only snapshot.
+The script uses only references whose current confirmation timestamp
+precedes each query, excludes the query itself and exact original-image retries,
+and emits a cache-backfill payload without writing to the database. Raw exports,
+photos and vectors belong under ignored `target/`.
+
+`scripts/java/ConfirmedReferencesSmoke.java` exercises migration, query caching,
+confirmation, deduplication, correction, preview provenance, late confirmation
+and model reindexing through the real Spring services. It requires a disposable
+PostgreSQL database named `yesihave_reference_test_*` and MinIO bucket named
+`reference-test-*`; it refuses other names. Run it with the application's runtime
+classpath and `REFERENCE_TEST_DB`, `REFERENCE_TEST_BUCKET`, `DB_PASSWORD`,
+`MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY`. The caller must clean up that isolated
+database and bucket afterwards; it must never target the production collection.
