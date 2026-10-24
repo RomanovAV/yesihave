@@ -31,6 +31,7 @@ class YesIHaveTelegramBotTest {
     private AddCheckedCoasterUseCase checked;
     private RecordCheckFeedbackUseCase feedback;
     private CandidatePhotoService photos;
+    private CollectionStatisticsService statistics;
     private YesIHaveTelegramBot bot;
 
     @BeforeEach
@@ -41,6 +42,8 @@ class YesIHaveTelegramBotTest {
         checked = mock(AddCheckedCoasterUseCase.class);
         feedback = mock(RecordCheckFeedbackUseCase.class);
         photos = mock(CandidatePhotoService.class);
+        statistics = mock(CollectionStatisticsService.class);
+        when(statistics.countUniqueCoasters()).thenReturn(128L);
         when(photos.load(any())).thenReturn(new CandidatePhotoService.PhotoPair(new byte[]{3}, new byte[]{4}));
         bot = createBot(Set.of(OWNER));
         when(api.downloadFile("front")).thenReturn(new byte[]{1});
@@ -52,7 +55,7 @@ class YesIHaveTelegramBotTest {
 
     private YesIHaveTelegramBot createBot(Set<Long> allowed) {
         return new YesIHaveTelegramBot(new TelegramProperties("test-token", "testbot", Duration.ofMinutes(15), allowed),
-                api, check, add, feedback, checked, photos);
+                api, check, add, feedback, checked, photos, statistics);
     }
 
     @Test
@@ -131,6 +134,11 @@ class YesIHaveTelegramBotTest {
         verify(api).sendMessage(eq(OWNER), contains("жду название"), anyList());
         bot.consume(text(OWNER, "My coaster"));
         verify(add).add(eq("My coaster"), aryEq(new byte[]{1}), aryEq(new byte[]{2}));
+        var order = inOrder(add, statistics, api);
+        order.verify(add).add(eq("My coaster"), any(), any());
+        order.verify(statistics).countUniqueCoasters();
+        order.verify(api).sendMessage(eq(OWNER),
+                eq("Сохранено в коллекцию: My coaster\nВсего уникальных бирдекелей: 128."), anyList());
         verifyNoInteractions(check, checked);
     }
 
@@ -155,6 +163,26 @@ class YesIHaveTelegramBotTest {
         verify(api, times(2)).downloadFile(anyString());
         verifyNoInteractions(add);
         verify(api).sendMessage(eq(OWNER), contains("Сохранено"), anyList());
+        var order = inOrder(checked, statistics, api);
+        order.verify(checked).add("New coaster", CHECK_ID, FeedbackSource.TELEGRAM);
+        order.verify(statistics).countUniqueCoasters();
+        order.verify(api).sendMessage(eq(OWNER),
+                eq("Сохранено в коллекцию: New coaster\nВсего уникальных бирдекелей: 128."), anyList());
+    }
+
+    @Test
+    void eachAdditionReportsTheCurrentCollectionCount() {
+        when(statistics.countUniqueCoasters()).thenReturn(128L, 129L);
+        for (String name : List.of("First", "Second")) {
+            bot.consume(text(OWNER, "Добавить"));
+            bot.consume(photo(OWNER, "front"));
+            bot.consume(photo(OWNER, "back"));
+            bot.consume(text(OWNER, name));
+        }
+        verify(api).sendMessage(eq(OWNER),
+                eq("Сохранено в коллекцию: First\nВсего уникальных бирдекелей: 128."), anyList());
+        verify(api).sendMessage(eq(OWNER),
+                eq("Сохранено в коллекцию: Second\nВсего уникальных бирдекелей: 129."), anyList());
     }
 
     @Test
@@ -167,14 +195,14 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
-    void deliversResultBeforeUploadingCandidatePhotos() {
+    void deliversCandidatePhotosBeforeResultAndSelectionButtons() {
         performCheck();
         var order = inOrder(photos, api);
-        order.verify(api).sendMessage(eq(OWNER), contains("1. Guinness"),
-                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
         order.verify(photos).load(CANDIDATE_ID);
         order.verify(api).sendPhotoPair(eq(OWNER), eq("Совпадение 1: Guinness — сходство 87.5%"),
                 aryEq(new byte[]{3}), aryEq(new byte[]{4}));
+        order.verify(api).sendMessage(eq(OWNER), contains("1. Guinness"),
+                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
     }
 
     @Test
@@ -205,6 +233,7 @@ class YesIHaveTelegramBotTest {
             order.verify(api).sendPhotoPair(eq(OWNER), startsWith("Совпадение " + (i + 1) + ": Coaster " + (i + 1)),
                     any(), any());
         }
+        order.verify(api).sendMessage(eq(OWNER), contains("3. Coaster 3"), anyList());
         verify(photos, never()).load(candidates.get(3).coasterId());
         verify(api).sendMessage(eq(OWNER), not(contains("4. Coaster")),
                 eq(List.of(List.of("Совпадение 1"), List.of("Совпадение 2"), List.of("Совпадение 3"),
@@ -251,11 +280,14 @@ class YesIHaveTelegramBotTest {
     }
 
     @Test
-    void failedPreviewNoticeKeepsAlreadyDeliveredResultAvailableForConfirmation() {
+    void missingPhotoNoticeIsPartOfFinalResultWithSelectionButtons() {
         when(photos.load(CANDIDATE_ID)).thenThrow(new IllegalStateException("Storage unavailable"));
-        doThrow(new IllegalStateException("Telegram unavailable")).when(api)
-                .sendMessage(eq(OWNER), startsWith("Не удалось показать фото"), anyList());
         performCheck();
+        var order = inOrder(photos, api);
+        order.verify(photos).load(CANDIDATE_ID);
+        order.verify(api).sendMessage(eq(OWNER), argThat(text -> text.contains("1. Guinness")
+                        && text.contains("Не удалось показать фото вариантов: 1.")),
+                eq(List.of(List.of("Совпадение 1"), List.of("Сохранить новый", "Не сохранять"), List.of("Отмена"))));
         bot.consume(text(OWNER, "Совпадение 1"));
         verify(feedback).confirmMatch(CHECK_ID, CANDIDATE_ID, FeedbackSource.TELEGRAM);
     }

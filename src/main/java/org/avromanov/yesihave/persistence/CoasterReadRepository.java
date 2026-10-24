@@ -15,6 +15,10 @@ public class CoasterReadRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    public long countCoasters() {
+        return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM coasters", Long.class);
+    }
+
     public Optional<CoasterImagePair> findImagePair(UUID coasterId) {
         return jdbcTemplate.query(
                 """

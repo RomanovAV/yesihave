@@ -3,6 +3,7 @@ package org.avromanov.yesihave.bot;
 import org.avromanov.yesihave.application.AddCoasterUseCase;
 import org.avromanov.yesihave.application.AddCheckedCoasterUseCase;
 import org.avromanov.yesihave.application.CheckPairUseCase;
+import org.avromanov.yesihave.application.CollectionStatisticsService;
 import org.avromanov.yesihave.application.DuplicateCoasterException;
 import org.avromanov.yesihave.application.RecordCheckFeedbackUseCase;
 import org.avromanov.yesihave.application.model.CandidateDto;
@@ -41,6 +42,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
     private final RecordCheckFeedbackUseCase recordCheckFeedbackUseCase;
     private final AddCheckedCoasterUseCase addCheckedCoasterUseCase;
     private final CandidatePhotoService candidatePhotoService;
+    private final CollectionStatisticsService collectionStatisticsService;
     private static final List<List<String>> MAIN_MENU = List.of(List.of("Проверить", "Добавить"));
     private static final List<List<String>> CANCEL_MENU = List.of(List.of("Отмена"));
     private final Map<Long, BotSession> sessions = new ConcurrentHashMap<>();
@@ -51,7 +53,8 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                                AddCoasterUseCase addCoasterUseCase,
                                RecordCheckFeedbackUseCase recordCheckFeedbackUseCase,
                                AddCheckedCoasterUseCase addCheckedCoasterUseCase,
-                               CandidatePhotoService candidatePhotoService) {
+                               CandidatePhotoService candidatePhotoService,
+                               CollectionStatisticsService collectionStatisticsService) {
         this.telegramProperties = telegramProperties;
         this.telegramApiClient = telegramApiClient;
         this.checkPairUseCase = checkPairUseCase;
@@ -59,6 +62,7 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
         this.recordCheckFeedbackUseCase = recordCheckFeedbackUseCase;
         this.addCheckedCoasterUseCase = addCheckedCoasterUseCase;
         this.candidatePhotoService = candidatePhotoService;
+        this.collectionStatisticsService = collectionStatisticsService;
     }
 
     @Override
@@ -196,7 +200,8 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                 addCoasterUseCase.add(text, session.frontImage(), session.backImage());
             }
             sessions.remove(chatId);
-            menu(chatId, "Сохранено в коллекцию: " + text);
+            menu(chatId, "Сохранено в коллекцию: " + text
+                    + "\nВсего уникальных бирдекелей: " + collectionStatisticsService.countUniqueCoasters() + ".");
             return;
         }
 
@@ -242,9 +247,6 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
             }
             keyboard.add(List.of("Сохранить новый", "Не сохранять"));
             keyboard.add(List.of("Отмена"));
-            // Deliver the decision before optional photo uploads can delay it.
-            telegramApiClient.sendMessage(chatId,
-                    formatMatchResult(result) + "\n\nВыберите совпадение или сохраните новую находку.", keyboard);
             long previewsStarted = System.nanoTime();
             List<Integer> unavailablePhotos = new ArrayList<>();
             for (int i = 0; i < candidates.size(); i++) {
@@ -273,17 +275,12 @@ public class YesIHaveTelegramBot implements SpringLongPollingBot, LongPollingSin
                             result.checkRequestId(), i + 1, elapsedMs(previewStarted));
                 }
             }
-            if (!unavailablePhotos.isEmpty()) {
-                try {
-                    telegramApiClient.sendMessage(chatId, "Не удалось показать фото вариантов: "
+            telegramApiClient.sendMessage(chatId,
+                    formatMatchResult(result)
+                            + (unavailablePhotos.isEmpty() ? "" : "\nНе удалось показать фото вариантов: "
                             + unavailablePhotos.stream().map(String::valueOf)
-                            .collect(java.util.stream.Collectors.joining(", ")) + ".", keyboard);
-                } catch (RuntimeException e) {
-                    // The result was delivered; keep its feedback session usable.
-                    log.warn("Telegram preview notice failed checkId={}, type={}",
-                            result.checkRequestId(), e.getClass().getSimpleName());
-                }
-            }
+                            .collect(java.util.stream.Collectors.joining(", ")) + ".")
+                            + "\n\nВыберите совпадение или сохраните новую находку.", keyboard);
             return;
         }
 
