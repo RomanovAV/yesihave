@@ -62,7 +62,7 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
         List<CandidateDto> rankedCandidates = rankCandidates(scoredRows);
 
         CandidateDto best = rankedCandidates.isEmpty() ? null : rankedCandidates.getFirst();
-        MatchDecision decision = classify(best);
+        MatchDecision decision = MatchClassifier.classify(rankedCandidates, matchingProperties);
 
         var matchedCoasterId = decision == MatchDecision.MATCH && best != null ? best.coasterId() : null;
         byte[] normalizedFront = frontImage;
@@ -122,6 +122,13 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
 
         Set<java.util.UUID> merged = new LinkedHashSet<>(frontIds);
         merged.addAll(backIds);
+        // A user may photograph the two sides in either order. Retrieve candidates
+        // for both orientations before scoring, including those absent from the
+        // original front/front and back/back shortlists.
+        merged.addAll(matchingRepository.findTopBackIds(
+                modelVersion, frontEmbedding, matchingProperties.topKSide()));
+        merged.addAll(matchingRepository.findTopFrontIds(
+                modelVersion, backEmbedding, matchingProperties.topKSide()));
 
         return matchingRepository.scoreCandidates(
                 modelVersion,
@@ -150,21 +157,6 @@ public class DefaultCheckPairUseCase implements CheckPairUseCase {
             ));
         }
         return result;
-    }
-
-    private MatchDecision classify(CandidateDto best) {
-        if (best == null) {
-            return MatchDecision.NO_MATCH;
-        }
-        double minSide = Math.min(best.scoreFront(), best.scoreBack());
-        if (best.pairScore() >= matchingProperties.matchPairThreshold()
-                && minSide >= matchingProperties.matchMinSideThreshold()) {
-            return MatchDecision.MATCH;
-        }
-        if (best.pairScore() >= matchingProperties.uncertainPairThreshold()) {
-            return MatchDecision.UNCERTAIN;
-        }
-        return MatchDecision.NO_MATCH;
     }
 
     private double pairScore(MatchedCandidateRow row) {

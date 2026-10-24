@@ -226,10 +226,30 @@ Duplicate detection thresholds are configurable through environment variables:
 ```bash
 APP_MATCH_PAIR_THRESHOLD=0.90
 APP_MATCH_MIN_SIDE_THRESHOLD=0.86
-APP_UNCERTAIN_PAIR_THRESHOLD=0.84
+APP_UNCERTAIN_PAIR_THRESHOLD=0.80
+APP_UNCERTAIN_LEADER_PAIR_THRESHOLD=0.75
+APP_UNCERTAIN_LEADER_MARGIN=0.05
 APP_MATCH_TOP_K_SIDE=20
 APP_MATCH_TOP_K_RESPONSE=3
 ```
+
+Matching checks both possible orders of the two photos, including candidate
+retrieval. Each candidate uses the better complete pairing (front/front +
+back/back, or front/back + back/front); the same stored side cannot serve as
+both sides of a match. This does not change embeddings or require reindexing.
+
+Automatic `MATCH` still requires pair similarity of at least 0.90 and both
+paired sides of at least 0.86. `UNCERTAIN` asks for human confirmation when
+pair similarity reaches 0.80, or when it reaches 0.75 and leads the runner-up
+by at least 0.05. The margin rule requires at least two returned candidates;
+with `APP_MATCH_TOP_K_RESPONSE=1`, only the absolute thresholds apply.
+Similarity scores are not probabilities. The more permissive review band
+can also flag different but similar coasters; it never promotes them to
+`MATCH` on the basis of the margin alone.
+
+The [24 October replay](docs/matching-evaluation-20261024.md) records the
+calibration sample, observed improvements, additional review prompts, and
+limitations. Historical check decisions remain unchanged after an upgrade.
 
 To inspect current score distribution in PostgreSQL, run:
 

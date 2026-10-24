@@ -13,11 +13,13 @@ import java.util.UUID;
 public class MatchingRepository {
     private final JdbcTemplate jdbcTemplate;
 
-    private final RowMapper<MatchedCandidateRow> scoredRowMapper = (rs, rowNum) -> new MatchedCandidateRow(
+    private final RowMapper<MatchedCandidateRow> scoredRowMapper = (rs, rowNum) -> MatchedCandidateRow.bestOrientation(
             UUID.fromString(rs.getString("coaster_id")),
             rs.getString("name"),
             rs.getDouble("score_front"),
-            rs.getDouble("score_back")
+            rs.getDouble("score_back"),
+            rs.getDouble("score_front_to_back"),
+            rs.getDouble("score_back_to_front")
     );
 
     public MatchingRepository(JdbcTemplate jdbcTemplate) {
@@ -87,18 +89,22 @@ public class MatchingRepository {
                 SELECT ce.coaster_id,
                        c.name,
                        1 - (ce.front_vector <=> ?::vector) AS score_front,
-                       1 - (ce.back_vector <=> ?::vector) AS score_back
+                       1 - (ce.back_vector <=> ?::vector) AS score_back,
+                       1 - (ce.back_vector <=> ?::vector) AS score_front_to_back,
+                       1 - (ce.front_vector <=> ?::vector) AS score_back_to_front
                 FROM coaster_embeddings ce
                 JOIN coasters c ON c.id = ce.coaster_id
                 WHERE ce.model_version = ?
                   AND ce.coaster_id IN (""" + placeholders + ") ";
 
-        Object[] args = new Object[3 + coasterIds.size()];
+        Object[] args = new Object[5 + coasterIds.size()];
         args[0] = VectorSql.toVectorLiteral(frontVector);
         args[1] = VectorSql.toVectorLiteral(backVector);
-        args[2] = modelVersion;
+        args[2] = VectorSql.toVectorLiteral(frontVector);
+        args[3] = VectorSql.toVectorLiteral(backVector);
+        args[4] = modelVersion;
         for (int i = 0; i < coasterIds.size(); i++) {
-            args[i + 3] = coasterIds.get(i);
+            args[i + 5] = coasterIds.get(i);
         }
 
         return jdbcTemplate.query(sql, scoredRowMapper, args);

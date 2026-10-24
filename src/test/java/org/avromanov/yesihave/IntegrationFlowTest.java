@@ -136,6 +136,11 @@ class IntegrationFlowTest {
         assertThat(result.topCandidates()).isNotEmpty();
         assertThat(result.checkRequestId()).isNotNull();
 
+        MatchResultDto reversed = checkPairUseCase.check(42L, back, front);
+        assertThat(reversed.decision()).isEqualTo(MatchDecision.MATCH);
+        assertThat(reversed.matchedCoasterId()).isEqualTo(coasterId);
+        assertThat(reversed.pairScore()).isCloseTo(result.pairScore(), org.assertj.core.api.Assertions.within(0.000001));
+
         recordCheckFeedbackUseCase.confirmMatch(
                 result.checkRequestId(),
                 coasterId,

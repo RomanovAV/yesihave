@@ -35,7 +35,9 @@ app:
   matching:
     match-pair-threshold: ${APP_MATCH_PAIR_THRESHOLD:0.90}
     match-min-side-threshold: ${APP_MATCH_MIN_SIDE_THRESHOLD:0.86}
-    uncertain-pair-threshold: ${APP_UNCERTAIN_PAIR_THRESHOLD:0.84}
+    uncertain-pair-threshold: ${APP_UNCERTAIN_PAIR_THRESHOLD:0.80}
+    uncertain-leader-pair-threshold: ${APP_UNCERTAIN_LEADER_PAIR_THRESHOLD:0.75}
+    uncertain-leader-margin: ${APP_UNCERTAIN_LEADER_MARGIN:0.05}
     top-k-side: ${APP_MATCH_TOP_K_SIDE:20}
     top-k-response: ${APP_MATCH_TOP_K_RESPONSE:3}
   telegram:

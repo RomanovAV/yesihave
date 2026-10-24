@@ -7,6 +7,8 @@ public record MatchingProperties(
         double matchPairThreshold,
         double matchMinSideThreshold,
         double uncertainPairThreshold,
+        double uncertainLeaderPairThreshold,
+        double uncertainLeaderMargin,
         int topKSide,
         int topKResponse
 ) {
